@@ -20,7 +20,7 @@ export default function LoginPage() {
         } = await supabase.auth.getSession();
 
         if (session) {
-        router.push('/dashboard'); // temporary protected page
+        router.push('/roster'); // go straight to roster management
         }
     };
 
@@ -41,7 +41,7 @@ export default function LoginPage() {
         if (isSignUp) {
             setMessage('Check your email to confirm your account.');
           } else {
-            router.push('/dashboard');
+            router.push('/roster');
           }
     }
   };
