@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
+import Link from 'next/link';
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
@@ -34,6 +35,9 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-4">
       <h1 className="text-2xl font-bold">Welcome, {userEmail}</h1>
+      <a href="/roster" className="text-blue-600 underline">
+        Go to Roster Management
+        </a> 
       <button
         onClick={handleLogout}
         className="bg-red-600 text-white px-4 py-2 rounded"
