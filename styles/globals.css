@@ -188,4 +188,15 @@
     border-radius: 0.5rem;
     padding: 1rem;
   }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
 }

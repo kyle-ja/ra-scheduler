@@ -34,11 +34,7 @@ export default function LoginPage() {
       if (isSignUp) {
         setMessage('Check your email to confirm your account.');
       } else {
-        setShowWelcome(true);
-        setTimeout(() => {
-          setShowWelcome(false);
-          router.push('/roster');
-        }, 2000);
+        router.push('/roster');
       }
     }
   };

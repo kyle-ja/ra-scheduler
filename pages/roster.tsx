@@ -37,6 +37,7 @@ export default function RosterPage() {
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [currentRosterName, setCurrentRosterName] = useState<string>('Unsaved Roster');
   const [currentRosterId, setCurrentRosterId] = useState<string>('');
+  const [originalEmployees, setOriginalEmployees] = useState<Employee[]>([]);
 
   // Load user ID and saved rosters on component mount
   useEffect(() => {
@@ -96,6 +97,7 @@ export default function RosterPage() {
       setNewRosterName('');
       setCurrentRosterName(data.name);
       setCurrentRosterId(data.id);
+      setOriginalEmployees(data.employees);
       setFeedbackMessage({ type: 'success', message: 'Roster saved successfully!' });
       
       // Clear success message after 3 seconds
@@ -156,6 +158,7 @@ export default function RosterPage() {
         ? { ...roster, employees: employees }
         : roster
     ));
+    setOriginalEmployees(employees);
     setFeedbackMessage({ type: 'success', message: 'Roster updated successfully!' });
     setTimeout(() => setFeedbackMessage(null), 3000);
   };
@@ -164,6 +167,7 @@ export default function RosterPage() {
     const selectedRoster = savedRosters.find(roster => roster.id === rosterId);
     if (selectedRoster) {
       setEmployees(selectedRoster.employees);
+      setOriginalEmployees(selectedRoster.employees);
       setSelectedRosterId('');
       setCurrentRosterName(selectedRoster.name);
       setCurrentRosterId(selectedRoster.id);
@@ -268,6 +272,7 @@ export default function RosterPage() {
       setCurrentRosterId('');
       setCurrentRosterName('Unsaved Roster');
       setEmployees([]);
+      setOriginalEmployees([]);
       setFeedbackMessage({ type: 'success', message: 'Roster deleted successfully!' });
       setTimeout(() => setFeedbackMessage(null), 3000);
     } catch (error) {
@@ -278,11 +283,35 @@ export default function RosterPage() {
   const handleNewRoster = () => {
     setCurrentRosterName('Unsaved Roster');
     setCurrentRosterId('');
-    setEmployees([]);
+    setEmployees([{
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+      name: '',
+      preferences: Array(7).fill(''),
+    }]);
+    setOriginalEmployees([]);
     setSelectedRosterId('');
     setNewRosterName('');
   };
 
+  // Add useEffect to initialize empty row when component mounts
+  useEffect(() => {
+    if (!currentRosterId && employees.length === 0) {
+      handleNewRoster();
+    }
+  }, []);
+
+  // Helper function to check if employees have changed
+  const hasEmployeesChanged = () => {
+    if (!currentRosterId) return false;
+    if (employees.length !== originalEmployees.length) return true;
+    
+    return employees.some((emp, index) => {
+      const originalEmp = originalEmployees[index];
+      if (!originalEmp) return true;
+      if (emp.name !== originalEmp.name) return true;
+      return emp.preferences.some((pref, i) => pref !== originalEmp.preferences[i]);
+    });
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -310,7 +339,7 @@ export default function RosterPage() {
                         onChange={(e) => handleLoadRoster(e.target.value)}
                         className="w-full"
                       >
-                        <option value="">Select a roster</option>
+                        <option value="">Load Saved Roster</option>
                         {savedRosters.map(roster => (
                           <option key={roster.id} value={roster.id}>
                             {roster.name}
@@ -325,7 +354,7 @@ export default function RosterPage() {
                           id="rosterName"
                           value={newRosterName}
                           onChange={(e) => setNewRosterName(e.target.value)}
-                          placeholder="Enter roster name"
+                          placeholder="Save Current Roster As..."
                           className="flex-1"
                         />
                         <button
@@ -358,7 +387,7 @@ export default function RosterPage() {
                   >
                     New Roster
                   </button>
-                  {currentRosterId && (
+                  {currentRosterId && hasEmployeesChanged() && (
                     <>
                       <button
                         onClick={handleUpdateRoster}
@@ -373,6 +402,14 @@ export default function RosterPage() {
                         Delete
                       </button>
                     </>
+                  )}
+                  {currentRosterId && !hasEmployeesChanged() && (
+                    <button
+                      onClick={handleDeleteCurrentRoster}
+                      className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
+                    >
+                      Delete
+                    </button>
                   )}
                 </div>
                 <div className="bg-white rounded-lg shadow overflow-x-auto">
