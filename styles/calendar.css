@@ -1,0 +1,120 @@
+/* Calendar Overrides */
+.react-calendar {
+  width: 100% !important;
+  max-width: 100% !important;
+  font-size: 1.1rem;
+  background: #fff;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+/* Calendar Navigation */
+.react-calendar__navigation button {
+  color: var(--primary-blue) !important;
+  min-width: 44px;
+  background: none !important;
+  font-size: 16px;
+  margin-top: 8px;
+}
+
+.react-calendar__navigation button:enabled:hover,
+.react-calendar__navigation button:enabled:focus {
+  background-color: #f8f8f8 !important;
+}
+
+.react-calendar__navigation button[disabled] {
+  background-color: #f0f0f0 !important;
+}
+
+/* Calendar Month View */
+.react-calendar__month-view__weekdays {
+  text-align: center;
+  text-transform: uppercase;
+  font-weight: bold;
+  font-size: 0.75em;
+}
+
+.react-calendar__month-view__weekdays__weekday {
+  padding: 0.5em;
+}
+
+.react-calendar__month-view__weekdays__weekday abbr {
+  text-decoration: none;
+  border-bottom: none;
+  color: var(--primary-blue) !important;
+}
+
+/* Calendar Days */
+.react-calendar__month-view__days__day {
+  color: var(--primary-blue) !important;
+  opacity: 1 !important;
+}
+
+/* Weekend Days */
+.react-calendar__month-view__days__day--weekend {
+  color: var(--primary-blue) !important;
+}
+
+/* Neighboring Month Days */
+.react-calendar__month-view__days__day--neighboringMonth {
+  color: var(--primary-blue) !important;
+  opacity: 0.5 !important;
+}
+
+/* Calendar Tiles */
+.react-calendar__tile {
+  color: var(--primary-blue) !important;
+  background: none !important;
+  padding: 0.75em 0.5em !important;
+}
+
+.react-calendar__tile:enabled:hover,
+.react-calendar__tile:enabled:focus {
+  background-color: #f0f8ff !important;
+}
+
+.react-calendar__tile--now {
+  background: #f0f8ff !important;
+  color: var(--primary-blue) !important;
+}
+
+/* Highlight for selected date and range */
+.react-calendar__tile--active,
+.react-calendar__tile--range,
+.react-calendar__tile--rangeStart,
+.react-calendar__tile--rangeEnd,
+.react-calendar__tile--rangeBothEnds {
+  background: var(--primary-blue) !important;
+  color: white !important;
+}
+
+/* Calendar Navigation Label */
+.react-calendar__navigation__label {
+  color: var(--primary-blue) !important;
+  font-weight: 600;
+  font-size: 1.2em;
+  background: none !important;
+}
+
+/* Calendar Navigation Buttons */
+.react-calendar__navigation button {
+  color: var(--primary-blue) !important;
+  font-size: 1.5em;
+  background: none !important;
+}
+
+/* Calendar Navigation Arrows */
+.react-calendar__navigation__arrow {
+  color: var(--primary-blue) !important;
+}
+
+/* Calendar Navigation Label */
+.react-calendar__navigation__label__labelText {
+  color: var(--primary-blue) !important;
+}
+
+.date-in-range {
+  background: var(--primary-blue) !important;
+  color: white !important;
+  border-radius: 0.5em !important;
+} 

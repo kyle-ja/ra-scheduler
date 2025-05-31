@@ -3,6 +3,7 @@ module.exports = {
     "./pages/**/*.{js,ts,jsx,tsx}",
     "./components/**/*.{js,ts,jsx,tsx}",
   ],
+  
   theme: {
     extend: {
       colors: {
@@ -11,6 +12,11 @@ module.exports = {
         'psu-white': '#FFFFFF',
         'psu-gray': '#E5E9F2',
         'psu-gold': '#FFB81C',
+        'test-color': '#FF0000',
+      },
+      fontFamily: {
+        sans: ['var(--font-geist-sans)'],
+        mono: ['var(--font-geist-mono)'],
       },
     },
   },
