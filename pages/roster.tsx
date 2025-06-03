@@ -30,6 +30,7 @@ interface SavedRoster {
   name: string;
   employees: Employee[];
   user_id: string;
+  schedulable_days: DayOfWeek[];
 }
 
 const DAYS_OF_WEEK: DayOfWeek[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -202,7 +203,8 @@ export default function RosterPage() {
       const newRoster: Omit<SavedRoster, 'id'> = {
         name: newRosterName.trim(),
         employees: employees,
-        user_id: userId
+        user_id: userId,
+        schedulable_days: schedulableDays
       };
 
       console.log('Attempting to save roster:', newRoster);
@@ -274,7 +276,10 @@ export default function RosterPage() {
 
     const { error } = await supabase
       .from('rosters')
-      .update({ employees: employees })
+      .update({ 
+        employees: employees,
+        schedulable_days: schedulableDays
+      })
       .eq('id', currentRosterId)
       .eq('user_id', userId);
 
@@ -286,7 +291,7 @@ export default function RosterPage() {
 
     setSavedRosters(savedRosters.map(roster => 
       roster.id === currentRosterId 
-        ? { ...roster, employees: employees }
+        ? { ...roster, employees: employees, schedulable_days: schedulableDays }
         : roster
     ));
     setOriginalEmployees(employees);
@@ -302,6 +307,7 @@ export default function RosterPage() {
       setSelectedRosterId('');
       setCurrentRosterName(selectedRoster.name);
       setCurrentRosterId(selectedRoster.id);
+      setSchedulableDays(selectedRoster.schedulable_days || DAYS_OF_WEEK);
     }
   };
 
@@ -365,7 +371,7 @@ export default function RosterPage() {
       {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
         name: '',
-        preferences: Array(7).fill(''),
+        preferences: Array(schedulableDays.length).fill(''),
       },
     ]);
   };
@@ -378,7 +384,10 @@ export default function RosterPage() {
     setEmployees(employees.map(emp => {
       if (emp.id === employeeId) {
         const newPreferences = [...emp.preferences];
-        newPreferences[index] = value;
+        // Only allow setting preferences up to the number of schedulable days
+        if (index < schedulableDays.length) {
+          newPreferences[index] = value;
+        }
         return { ...emp, preferences: newPreferences };
       }
       return emp;
@@ -428,6 +437,7 @@ export default function RosterPage() {
     setOriginalEmployees([]);
     setSelectedRosterId('');
     setNewRosterName('');
+    setSchedulableDays(DAYS_OF_WEEK);
   };
 
   // Add useEffect to initialize empty row when component mounts
@@ -441,6 +451,15 @@ export default function RosterPage() {
   const hasEmployeesChanged = () => {
     if (!currentRosterId) return false;
     if (employees.length !== originalEmployees.length) return true;
+    
+    // Check if schedulable days have changed
+    const currentRoster = savedRosters.find(r => r.id === currentRosterId);
+    if (currentRoster) {
+      const originalSchedulableDays = currentRoster.schedulable_days || DAYS_OF_WEEK;
+      if (schedulableDays.length !== originalSchedulableDays.length) return true;
+      if (schedulableDays.some(day => !originalSchedulableDays.includes(day))) return true;
+      if (originalSchedulableDays.some(day => !schedulableDays.includes(day))) return true;
+    }
     
     return employees.some((emp, index) => {
       const originalEmp = originalEmployees[index];
@@ -682,7 +701,7 @@ export default function RosterPage() {
                         <th scope="col">
                           Employee Name
                         </th>
-                        {Array.from({ length: 7 }, (_, i) => (
+                        {Array.from({ length: schedulableDays.length }, (_, i) => (
                           <th key={i} scope="col">
                             {i + 1}{getOrdinalSuffix(i + 1)} Preference
                           </th>
@@ -712,15 +731,19 @@ export default function RosterPage() {
                               className="text-sm font-medium"
                             />
                           </td>
-                          {employee.preferences.map((pref, index) => (
+                          {Array.from({ length: schedulableDays.length }, (_, index) => (
                             <td key={index}>
                               <select
-                                value={pref}
+                                value={employee.preferences[index] || ''}
                                 onChange={e => handlePreferenceChange(employee.id, index, e.target.value as DayOfWeek)}
-                                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                                className={`mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md ${
+                                  employee.preferences[index] 
+                                    ? 'bg-green-50 border-green-300 text-green-700' 
+                                    : 'bg-gray-50 border-gray-300 text-gray-700'
+                                }`}
                               >
                                 <option value="">Clear Preference</option>
-                                {[pref, ...getAvailableDays(employee.preferences, index)]
+                                {[employee.preferences[index], ...getAvailableDays(employee.preferences, index)]
                                     .filter((value, i, self) => (schedulableDays.includes(value) || value === '') && self.indexOf(value) === i)
                                     .map(day => (
                                         <option key={day || `no-pref-${index}-${employee.id}`} value={day}>{day || 'Not Selected'}</option>
