@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Header from '../components/Header';
 import { supabase } from '../lib/supabaseClient';
 import 'react-calendar/dist/Calendar.css';
@@ -38,6 +38,96 @@ export default function RosterPage() {
   const [currentRosterName, setCurrentRosterName] = useState<string>('Unsaved Roster');
   const [currentRosterId, setCurrentRosterId] = useState<string>('');
   const [originalEmployees, setOriginalEmployees] = useState<Employee[]>([]);
+
+  // Holds the schedule returned by the API
+  const [schedule, setSchedule] = useState<
+    { date: string; employee: string; weekday: number }[] | null
+  >(null);
+
+  // Shows a spinner or error message later
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fast lookup: "YYYY-MM-DD" → employee name
+  const scheduleMap = useMemo(() => {
+    if (!schedule) return {};
+    return schedule.reduce<Record<string, string>>((acc, item) => {
+      acc[item.date] = item.employee;
+      return acc;
+    }, {});
+  }, [schedule]);
+
+  interface ScheduleSummaryRow {
+    employeeName: string;
+    prefCounts: (number | string)[]; // Array of 7 for preferences 1-7. String is "not selected"
+    noPreferenceCount: number;
+    totalDaysAssigned: number;
+  }
+
+  const scheduleSummaryData = useMemo((): ScheduleSummaryRow[] => {
+    if (!schedule || !employees || employees.length === 0) {
+      return [];
+    }
+    console.log("Recalculating scheduleSummaryData with schedule:", JSON.parse(JSON.stringify(schedule))); // Add this for debugging
+    console.log("Using employees for summary:", JSON.parse(JSON.stringify(employees))); // Add this for debugging
+
+    return employees.map(employee => {
+      const summaryRow: ScheduleSummaryRow = {
+        employeeName: employee.name || "Unnamed Employee",
+        prefCounts: [],
+        noPreferenceCount: 0,
+        totalDaysAssigned: 0,
+      };
+
+      // Initialize prefCounts
+      for (let i = 0; i < 7; i++) {
+        if (employee.preferences[i] && employee.preferences[i] !== '') {
+          summaryRow.prefCounts.push(0);
+        } else {
+          summaryRow.prefCounts.push("not selected");
+        }
+      }
+
+      const employeeAssignments = schedule.filter(s => s.employee === employee.name);
+      summaryRow.totalDaysAssigned = employeeAssignments.length;
+
+      for (const assignment of employeeAssignments) {
+        const assignedWeekdayIndex = assignment.weekday; // 0=Sunday, ..., 6=Saturday
+        const assignedWeekdayName = DAYS_OF_WEEK[assignedWeekdayIndex];
+
+        // --- Verification Step ---
+        const dateParts = assignment.date.split('-').map(Number);
+        // Create date as local, noon, to avoid timezone shifts affecting getDay()
+        const localDateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], 12);
+        const actualDayFromDate = localDateObj.getDay(); // 0 for Sunday, 1 for Monday, etc.
+
+        if (actualDayFromDate !== assignedWeekdayIndex) {
+          console.warn(
+            `MISMATCH for ${employee.name} on ${assignment.date}: ` +
+            `Date string implies day ${actualDayFromDate} (${DAYS_OF_WEEK[actualDayFromDate]}), ` +
+            `but schedule item's 'weekday' field is ${assignedWeekdayIndex} (${assignedWeekdayName}).`
+          );
+        }
+        // --- End Verification Step ---
+        
+        let isPreferred = false;
+        for (let k = 0; k < employee.preferences.length; k++) {
+          if (employee.preferences[k] === assignedWeekdayName) {
+            if (typeof summaryRow.prefCounts[k] === 'number') {
+              (summaryRow.prefCounts[k] as number)++;
+            }
+            isPreferred = true;
+            break; 
+          }
+        }
+
+        if (!isPreferred) {
+          summaryRow.noPreferenceCount++;
+        }
+      }
+      return summaryRow;
+    });
+  }, [schedule, employees]);
 
   // Load user ID and saved rosters on component mount
   useEffect(() => {
@@ -313,6 +403,76 @@ export default function RosterPage() {
     });
   };
 
+  const handleGenerateSchedule = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // 1) Build the `employees` array (employeeData)
+      const rankWeights = [0, 20, 40];
+      const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const employeeData = employees.map((emp: Employee) => {
+        const cost = Array(7).fill(100);
+        emp.preferences.forEach((day: DayOfWeek, idx: number) => {
+          if (day) {
+            const w = weekdays.indexOf(day);
+            if (w !== -1) cost[w] = rankWeights[idx] ?? 100;
+          }
+        });
+        return { name: emp.name, weekday_cost: cost };
+      });
+
+      // 2) Build the `dates` array
+      const buildDateRange = (start: Date, end: Date) => {
+        const out: { date: string; weekday: number }[] = [];
+        const cur = new Date(start);
+        // Ensure 'cur' starts at the beginning of the day to avoid DST/timezone issues with comparisons
+        cur.setHours(0, 0, 0, 0);
+        const endDateComparison = new Date(end);
+        endDateComparison.setHours(23, 59, 59, 999); // Ensure 'end' is at the end of the day
+
+        while (cur <= endDateComparison) {
+          out.push({
+            date: cur.toISOString().slice(0, 10),
+            weekday: cur.getDay(), // 0 = Sunday, 1 = Monday, etc.
+          });
+          cur.setDate(cur.getDate() + 1);
+        }
+        return out;
+      };
+
+      // Validate start and end dates are present
+      if (!startDate || !endDate) {
+        setError("Please select both a start and end date.");
+        setLoading(false);
+        return;
+      }
+
+      const dates = buildDateRange(new Date(startDate), new Date(endDate));
+      console.log("Generated dates array (to be sent to API):", JSON.parse(JSON.stringify(dates))); // DEBUG LINE
+
+      // 3) POST to our API
+      const res = await fetch('/api/generateSchedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employees: employeeData, dates }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`API ${res.status}: ${await res.text()}`);
+      }
+
+      const json = (await res.json()) as { date: string; employee: string; weekday: number }[];
+      setSchedule(json);
+      console.log('Received schedule:', json); // temporary debug
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message ?? 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -531,8 +691,64 @@ export default function RosterPage() {
                   tileClassName={({ date }) => isDateInRange(date) ? 'date-in-range' : null}
                   className="border rounded-lg shadow-sm"
                   calendarType="gregory"
+                  tileContent={({ date, view }) => {
+                    // Show names only on day tiles (view === 'month')
+                    if (view !== 'month') return null;
+                    const iso = date.toISOString().slice(0, 10);
+                    const emp = scheduleMap[iso];
+                    return emp ? (
+                      <span className="mt-1 block truncate text-xs font-semibold text-primary-blue">
+                        {emp}
+                      </span>
+                    ) : null;
+                  }}
                 />
               </div>
+
+              <button
+                className="mt-4 rounded bg-primary-blue px-4 py-2 text-white hover:opacity-90 disabled:opacity-50"
+                onClick={handleGenerateSchedule}
+                disabled={loading}
+              >
+                {loading ? 'Generating…' : 'Generate Schedule'}
+              </button>
+              {error && <p className="mt-2 text-red-600">{error}</p>}
+
+              {schedule && schedule.length > 0 && scheduleSummaryData.length > 0 && (
+                <div className="mt-8">
+                  <h2 className="text-xl font-semibold mb-4">Schedule Summary</h2>
+                  <div className="overflow-x-auto bg-white shadow rounded-lg">
+                    <table className="min-w-full">
+                      <thead>
+                        <tr>
+                          <th className="px-4 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Employee</th>
+                          {[1, 2, 3, 4, 5, 6, 7].map(n => (
+                            <th key={n} className="px-3 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                              {n}{getOrdinalSuffix(n)}
+                            </th>
+                          ))}
+                          <th className="px-3 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">No Pref</th>
+                          <th className="px-3 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Days</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white">
+                        {scheduleSummaryData.map((row, index) => (
+                          <tr key={row.employeeName + index} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
+                            <td className="px-4 py-3 border-b border-gray-200 whitespace-nowrap text-sm font-medium text-gray-900">{row.employeeName}</td>
+                            {row.prefCounts.map((count, i) => (
+                              <td key={i} className={`px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-center ${count === "not selected" ? "text-gray-400" : "text-gray-800"}`}>
+                                {count}
+                              </td>
+                            ))}
+                            <td className="px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800 text-center">{row.noPreferenceCount}</td>
+                            <td className="px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800 text-center">{row.totalDaysAssigned}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+limit code changes to a minimum when implementing a new feature or debugging, so that you do not accidentally change code that did not really need to be changed

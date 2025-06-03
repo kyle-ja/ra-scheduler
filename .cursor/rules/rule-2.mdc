@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Before starting to make code changes, ensure you know what version of language you are working in, so that you write the proper code for that version, and don't accidentally write code for a version of the framework that I am not using in the project
