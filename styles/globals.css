@@ -77,7 +77,7 @@
   }
 
   .main-content {
-    max-width: 910px;
+    max-width: 1274px;
     margin: 0 auto;
   }
 }
@@ -91,6 +91,7 @@
     background: #fff;
     border-radius: 0.75rem;
     overflow: hidden;
+    border: 1px solid #e2e8f0;
   }
 
   /* Calendar Navigation */
@@ -109,7 +110,7 @@
     background-color: #f0f0f0;
   }
 
-  /* Calendar Month View */
+  /* Calendar Month View Weekdays (MON, TUE, etc.) */
   .react-calendar__month-view__weekdays {
     text-align: center;
     text-transform: uppercase;
@@ -125,55 +126,96 @@
     border-bottom: none;
   }
 
-  /* Unified style for all calendar day numbers */
-  .react-calendar__month-view__days__day {
-    color: var(--primary-blue) !important;
-    opacity: 1 !important;
-  }
-
-  /* Override weekend styles */
-  .react-calendar__month-view__days__day--weekend {
-    color: var(--primary-blue) !important;
-  }
-
-  /* Override neighboring month days */
-  .react-calendar__month-view__days__day--neighboringMonth {
-    color: var(--primary-blue) !important;
-    opacity: 0.5 !important;
-  }
-
-  /* Ensure all dates are visible */
+  /* == General Calendar Tile Structure == */
   .react-calendar__tile {
-    color: var(--primary-blue) !important;
-    background: none !important;
+    position: relative !important; 
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important; 
+    align-items: center !important;
+    min-height: 70px !important; 
+    padding: 4px !important;     
+    box-sizing: border-box !important;
+    border: 1px solid #eee !important; 
   }
 
-  .react-calendar__tile:enabled:hover,
-  .react-calendar__tile:enabled:focus {
-    background-color: #f0f8ff !important;
+  .react-calendar__tile abbr {
+    display: none !important;
   }
 
-  .react-calendar__tile--now {
-    background: #f0f8ff !important;
-    color: var(--primary-blue) !important;
+  /* == Styling for IN-RANGE and SCHEDULABLE days == */
+  .blue-tile-in-range,
+  .react-calendar__month-view__days__day--neighboringMonth.blue-tile-in-range {
+    background-color: var(--primary-blue) !important; 
+    color: #fff !important; 
+    opacity: 1 !important; 
   }
 
-  .react-calendar__tile--active {
-    background: var(--primary-blue) !important;
-    color: white !important;
+  .blue-tile-in-range abbr,
+  .react-calendar__month-view__days__day--neighboringMonth.blue-tile-in-range abbr {
+    color: #fff !important;
+    opacity: 1 !important; 
+    font-weight: normal !important; 
   }
 
-  /* Calendar Navigation: arrows and month label */
-  .react-calendar__navigation__label {
-    color: var(--primary-blue) !important;
-    font-weight: 600;
-    font-size: 1.2em;
-    background: none !important;
+  .blue-tile-in-range .employee-name-display,
+  .react-calendar__month-view__days__day--neighboringMonth.blue-tile-in-range .employee-name-display {
+    color: #fff !important;
+    font-size: 0.75em;
+    text-align: center;
+    width: 100%;
+    margin-top: auto; 
+    padding-bottom: 2px;
   }
-  .react-calendar__navigation button {
-    color: var(--primary-blue) !important;
-    font-size: 1.5em;
-    background: none !important;
+
+  /* == Styling for OUT-OF-RANGE or NON-SCHEDULABLE days == */
+  .white-tile-out-of-range,
+  .react-calendar__month-view__days__day--neighboringMonth.white-tile-out-of-range {
+    background-color: #fff !important;
+    color: #ccc !important; 
+    opacity: 1 !important; 
+  }
+
+  .white-tile-out-of-range abbr,
+  .react-calendar__month-view__days__day--neighboringMonth.white-tile-out-of-range abbr {
+    color: #ccc !important;
+    opacity: 1 !important;
+    font-weight: normal !important;
+  }
+
+  .white-tile-out-of-range .employee-name-display,
+  .react-calendar__month-view__days__day--neighboringMonth.white-tile-out-of-range .employee-name-display {
+    display: none !important;
+  }
+
+  /* == Overrides for react-calendar default behaviors for specific states like "today" == */
+
+  /* Today's date - ensuring our blue/white styling takes precedence if it's in range and schedulable */
+  .react-calendar__tile--now.blue-tile-in-range,
+  .react-calendar__tile--now.react-calendar__month-view__days__day--neighboringMonth.blue-tile-in-range {
+    background-color: var(--primary-blue) !important; 
+  }
+  .react-calendar__tile--now.blue-tile-in-range abbr,
+  .react-calendar__tile--now.react-calendar__month-view__days__day--neighboringMonth.blue-tile-in-range abbr {
+    color: #fff !important; 
+    font-weight: bold !important; 
+  }
+
+  /* If today is out of range or not schedulable, it should be white with gray text */
+  .react-calendar__tile--now.white-tile-out-of-range,
+  .react-calendar__tile--now.react-calendar__month-view__days__day--neighboringMonth.white-tile-out-of-range {
+    background-color: #fff !important;
+  }
+  .react-calendar__tile--now.white-tile-out-of-range abbr,
+  .react-calendar__tile--now.react-calendar__month-view__days__day--neighboringMonth.white-tile-out-of-range abbr {
+     color: #ccc !important;
+     font-weight: bold !important; 
+  }
+
+  /* General override for neighboring month day opacity if not covered by specific classes above */
+  /* This ensures they are not dimmed if our classes aren't applied for some reason, but specific classes should handle it */
+  .react-calendar__month-view__days__day--neighboringMonth {
+    opacity: 1 !important; /* Default to full opacity */
   }
 
   .feedback-success {
@@ -198,5 +240,70 @@
       opacity: 1;
       transform: translateX(0);
     }
+  }
+
+  /* Calendar Navigation: arrows and month label */
+  .react-calendar__navigation__label {
+    color: var(--primary-blue) !important;
+    font-weight: 600;
+    font-size: 1.2em;
+    background: none !important;
+  }
+  .react-calendar__navigation button {
+    color: var(--primary-blue) !important;
+    font-size: 1.5em;
+    background: none !important;
+  }
+
+  /* Assigned day: dark blue background, white text */
+  .assigned-day {
+    background-color: var(--primary-blue) !important;
+    color: #fff !important;
+    border-color: var(--primary-blue) !important;
+  }
+  .assigned-day abbr,
+  .assigned-day .employee-name-on-tile {
+    color: #fff !important;
+  }
+
+  /* In-range days: always dark blue with white text, even if neighboring month */
+  .in-range-day,
+  .react-calendar__month-view__days__day--neighboringMonth.in-range-day {
+    background: var(--primary-blue) !important;
+    color: #fff !important;
+    border-color: var(--primary-blue) !important;
+    opacity: 1 !important;
+  }
+  .in-range-day abbr,
+  .react-calendar__month-view__days__day--neighboringMonth.in-range-day abbr {
+    color: #fff !important;
+    opacity: 1 !important;
+  }
+  .in-range-day .employee-name-on-tile,
+  .react-calendar__month-view__days__day--neighboringMonth.in-range-day .employee-name-on-tile {
+    color: #fff !important;
+    opacity: 1 !important;
+  }
+
+  /* Out-of-range days: always white with gray number, even if neighboring month */
+  .out-of-range-day,
+  .react-calendar__month-view__days__day--neighboringMonth.out-of-range-day {
+    background: #fff !important;
+    color: #cccccc !important;
+    opacity: 1 !important;
+  }
+  .out-of-range-day abbr,
+  .react-calendar__month-view__days__day--neighboringMonth.out-of-range-day abbr {
+    color: #cccccc !important;
+    opacity: 1 !important;
+  }
+  .out-of-range-day .employee-name-on-tile,
+  .react-calendar__month-view__days__day--neighboringMonth.out-of-range-day .employee-name-on-tile {
+    display: none !important;
+  }
+
+  /* Remove/override any default opacity for neighboring month days */
+  .react-calendar__month-view__days__day--neighboringMonth {
+    opacity: 1 !important;
   }
 }

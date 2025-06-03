@@ -1,13 +1,23 @@
 import { useState, useEffect, useMemo } from 'react';
 import Header from '../components/Header';
+import DaySelector from '../components/DaySelector';
 import { supabase } from '../lib/supabaseClient';
 import 'react-calendar/dist/Calendar.css';
 import Calendar from 'react-calendar';
+// ---------- helpers ----------
+import { differenceInCalendarDays, addDays, isWithinInterval } from "date-fns";
+
+/** Inclusive list of every calendar day between two dates. */
+const getDatesBetween = (start: Date, end: Date) => {
+  const days = differenceInCalendarDays(end, start) + 1;
+  return [...Array(days)].map((_, i) => addDays(start, i).toDateString());
+};
+// ---------- helpers ----------
 
 type ValuePiece = Date | null;
 type Value = ValuePiece | [ValuePiece, ValuePiece];
 
-type DayOfWeek = 'Sunday' | 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | '';
+export type DayOfWeek = 'Sunday' | 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | '';
 
 interface Employee {
   id: string;
@@ -38,6 +48,37 @@ export default function RosterPage() {
   const [currentRosterName, setCurrentRosterName] = useState<string>('Unsaved Roster');
   const [currentRosterId, setCurrentRosterId] = useState<string>('');
   const [originalEmployees, setOriginalEmployees] = useState<Employee[]>([]);
+  const [schedulableDays, setSchedulableDays] = useState<DayOfWeek[]>(DAYS_OF_WEEK);
+
+  const inRangeSet = useMemo(() => {
+    if (!startDate || !endDate) { // startDate and endDate are "YYYY-MM-DD"
+      return new Set<string>();
+    }
+
+    const parseYYYYMMDDToLocalDate = (dateString: string): Date | null => {
+      const parts = dateString.split('-');
+      if (parts.length === 3) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed for Date constructor
+        const day = parseInt(parts[2], 10);
+        if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+          // Create date at noon local time to avoid DST issues around midnight
+          return new Date(year, month, day, 12, 0, 0, 0);
+        }
+      }
+      return null;
+    };
+
+    const localStartDate = parseYYYYMMDDToLocalDate(startDate);
+    const localEndDate = parseYYYYMMDDToLocalDate(endDate);
+
+    if (!localStartDate || !localEndDate || localEndDate < localStartDate) {
+      // console.warn("Invalid date range for inRangeSet:", startDate, endDate, localStartDate, localEndDate);
+      return new Set<string>();
+    }
+    
+    return new Set(getDatesBetween(localStartDate, localEndDate));
+  }, [startDate, endDate]);
 
   // Holds the schedule returned by the API
   const [schedule, setSchedule] = useState<
@@ -345,8 +386,14 @@ export default function RosterPage() {
   };
 
   const getAvailableDays = (currentPreferences: DayOfWeek[], currentIndex: number): DayOfWeek[] => {
-    const selectedDays = currentPreferences.filter((day, index) => index !== currentIndex && day !== '');
-    return DAYS_OF_WEEK.filter(day => !selectedDays.includes(day));
+    // Start with only the days that are generally schedulable
+    let available = [...schedulableDays];
+
+    // Filter out days already selected in other preference slots for this employee
+    const selectedByThisEmployee = currentPreferences.filter((day, index) => index !== currentIndex && day !== '');
+    available = available.filter(day => !selectedByThisEmployee.includes(day));
+    
+    return available;
   };
 
   const handleDeleteCurrentRoster = async () => {
@@ -408,57 +455,81 @@ export default function RosterPage() {
       setLoading(true);
       setError(null);
 
-      // 1) Build the `employees` array (employeeData)
-      const rankWeights = [0, 20, 40];
-      const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const employeeData = employees.map((emp: Employee) => {
-        const cost = Array(7).fill(100);
-        emp.preferences.forEach((day: DayOfWeek, idx: number) => {
-          if (day) {
-            const w = weekdays.indexOf(day);
-            if (w !== -1) cost[w] = rankWeights[idx] ?? 100;
-          }
-        });
-        return { name: emp.name, weekday_cost: cost };
-      });
-
-      // 2) Build the `dates` array
-      const buildDateRange = (startStr: string, endStr: string) => {
-        const out: { date: string; weekday: number }[] = [];
-        
-        // Parse YYYY-MM-DD strings into Date objects representing local midnight
-        const startDateParts = startStr.split('-').map(Number);
-        const cur = new Date(startDateParts[0], startDateParts[1] - 1, startDateParts[2], 0, 0, 0, 0);
-
-        const endDateParts = endStr.split('-').map(Number);
-        // loopEndDate will be midnight of the day *after* the selected endStr
-        const loopEndDate = new Date(endDateParts[0], endDateParts[1] - 1, endDateParts[2] + 1, 0, 0, 0, 0);
-
-        while (cur < loopEndDate) {
-          out.push({
-            date: cur.toISOString().slice(0, 10),
-            weekday: cur.getDay(), // 0 = Sunday, 1 = Monday, etc.
-          });
-          cur.setDate(cur.getDate() + 1);
-        }
-        return out;
-      };
-
-      // Validate start and end dates are present
       if (!startDate || !endDate) {
         setError("Please select both a start and end date.");
         setLoading(false);
         return;
       }
+      
+      if (schedulableDays.length === 0) {
+        setError("No schedulable days selected. Please select at least one day of the week to schedule.");
+        setLoading(false);
+        return;
+      }
 
-      const dates = buildDateRange(startDate, endDate);
-      console.log("Generated dates array (to be sent to API):", JSON.parse(JSON.stringify(dates))); // DEBUG LINE
+      // 1) Build the `employees` array (employeeData) - cost logic remains important for preferences on allowed days
+      const rankWeights = [0, 20, 40];
+      const employeeData = employees.map((emp: Employee) => {
+        const cost = Array(7).fill(1000);
+        emp.preferences.forEach((preferredDay: DayOfWeek, rankIndex: number) => {
+          if (preferredDay && schedulableDays.includes(preferredDay)) {
+            const dayIndex = DAYS_OF_WEEK.indexOf(preferredDay);
+            if (dayIndex !== -1) {
+              cost[dayIndex] = rankWeights[rankIndex] ?? 100;
+            }
+          }
+        });
+        for (let i = 0; i < DAYS_OF_WEEK.length; i++) {
+          const currentDayName = DAYS_OF_WEEK[i];
+          if (schedulableDays.includes(currentDayName)) {
+            if (cost[i] === 1000) { 
+              cost[i] = 60; 
+            }
+          } else {
+            cost[i] = 1000; 
+          }
+        }
+        return { name: emp.name, weekday_cost: cost };
+      });
 
-      // 3) POST to our API
+      // 2) Build the `dates` array, NOW FILTERED by schedulableDays
+      const buildDateRange = (startStr: string, endStr: string) => {
+        const out: { date: string; weekday: number }[] = [];
+        const startDateParts = startStr.split('-').map(Number);
+        const cur = new Date(startDateParts[0], startDateParts[1] - 1, startDateParts[2], 0, 0, 0, 0);
+        const endDateParts = endStr.split('-').map(Number);
+        const loopEndDate = new Date(endDateParts[0], endDateParts[1] - 1, endDateParts[2] + 1, 0, 0, 0, 0);
+        
+        while (cur < loopEndDate) {
+          const currentDayName = DAYS_OF_WEEK[cur.getDay()]; // Get the string name of the day
+          if (schedulableDays.includes(currentDayName)) { // <<< FILTERING HAPPENS HERE
+            out.push({
+              date: cur.toISOString().slice(0, 10),
+              weekday: cur.getDay(),
+            });
+          }
+          cur.setDate(cur.getDate() + 1);
+        }
+        return out;
+      };
+      const dates = buildDateRange(startDate, endDate); // 'dates' now only contains truly schedulable dates
+      
+      // Validate that there are actually dates to schedule after filtering
+      if (dates.length === 0) {
+        // This error message now covers cases where the range was valid but no days within it matched schedulableDays
+        setError("No schedulable days fall within the selected date range based on your day-of-week selection, or the date range itself is invalid. Please adjust your selections.");
+        setLoading(false);
+        return;
+      }
+
+      console.log("Employee data for solver:", JSON.stringify(employeeData));
+      console.log("FILTERED Dates for solver:", JSON.stringify(dates)); // Log the filtered dates
+
+      // 3) POST to our API with the FILTERED dates list
       const res = await fetch('/api/generateSchedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employees: employeeData, dates }),
+        body: JSON.stringify({ employees: employeeData, dates }), // 'dates' is now pre-filtered
       });
 
       if (!res.ok) {
@@ -466,8 +537,8 @@ export default function RosterPage() {
       }
 
       const json = (await res.json()) as { date: string; employee: string; weekday: number }[];
-      setSchedule(json);
-      console.log('Received schedule:', json); // temporary debug
+      setSchedule(json); // The schedule returned should now only contain assignments for the filtered dates
+      console.log('Received schedule (should be for filtered dates only):', json);
     } catch (err: any) {
       console.error(err);
       setError(err.message ?? 'Unknown error');
@@ -476,10 +547,34 @@ export default function RosterPage() {
     }
   };
 
+  // Effect to clear invalid preferences when schedulableDays changes
+  useEffect(() => {
+    setEmployees(prevEmployees => 
+      prevEmployees.map(employee => {
+        const newPreferences = employee.preferences.map(pref => 
+          schedulableDays.includes(pref) ? pref : '' // Clear preference if not in schedulableDays
+        ) as DayOfWeek[]; // Cast to DayOfWeek[]
+        // Ensure preferences array still has 7 elements, padding with '' if necessary
+        // This might not be strictly needed if preferences are always full length
+        // but good for safety if an employee could have < 7 preferences initially.
+        const fullPreferences = [...newPreferences];
+        while (fullPreferences.length < 7) {
+          fullPreferences.push('');
+        }
+        return { ...employee, preferences: fullPreferences.slice(0, 7) }; // Ensure it's exactly 7
+      })
+    );
+  }, [schedulableDays]);
+
+  // Helper function to get day name (e.g., 'Sunday') from a Date object
+  const getDayName = (date: Date): DayOfWeek => {
+    return DAYS_OF_WEEK[date.getDay()];
+  };
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen bg-gray-100">
       <Header />
-      <div className="flex-1 p-4">
+      <main className="container mx-auto p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto">
           <div style={{
             background: '#fff',
@@ -490,7 +585,6 @@ export default function RosterPage() {
             <div className="main-content">
               <h1 className="text-2xl font-bold mb-6">Roster Management</h1>
 
-              
               {/* Roster Management Menu */}
               <div className="mb-8 bg-white rounded-lg shadow p-4">
                 <div className="flex items-center justify-between gap-4">
@@ -536,6 +630,11 @@ export default function RosterPage() {
                     {feedbackMessage.message}
                   </div>
                 )}
+              </div>
+
+              {/* NEW: Day Selector Component */}
+              <div className="mb-8">
+                <DaySelector selectedDays={schedulableDays} onChange={setSchedulableDays} />
               </div>
 
               {/* Employee Roster Section */}
@@ -617,19 +716,15 @@ export default function RosterPage() {
                             <td key={index}>
                               <select
                                 value={pref}
-                                onChange={e => setEmployees(employees.map(emp => {
-                                  if (emp.id === employee.id) {
-                                    const newPrefs = [...emp.preferences];
-                                    newPrefs[index] = e.target.value as DayOfWeek;
-                                    return { ...emp, preferences: newPrefs };
-                                  }
-                                  return emp;
-                                }))}
+                                onChange={e => handlePreferenceChange(employee.id, index, e.target.value as DayOfWeek)}
+                                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
                               >
                                 <option value="">Clear Preference</option>
-                                {[pref, ...getAvailableDays(employee.preferences, index)].filter((value, i, self) => self.indexOf(value) === i).map(day => (
-                                  <option key={day} value={day}>{day}</option>
-                                ))}
+                                {[pref, ...getAvailableDays(employee.preferences, index)]
+                                    .filter((value, i, self) => (schedulableDays.includes(value) || value === '') && self.indexOf(value) === i)
+                                    .map(day => (
+                                        <option key={day || `no-pref-${index}-${employee.id}`} value={day}>{day || 'Not Selected'}</option>
+                                    ))}
                               </select>
                             </td>
                           ))}
@@ -648,66 +743,119 @@ export default function RosterPage() {
                 </div>
               </div>
 
-              {/* Existing Date Range Section */}
-              <div className="mb-8">
-                <h2 className="text-lg font-semibold mb-2">Select Date Range</h2>
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <label htmlFor="startDate" className="block text-sm font-medium mb-1">
-                      Start Date
-                    </label>
+              {/* MOVED: Date Range Inputs and Calendar Display - Now after roster sections */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                {/* Date Inputs */}
+                <div className="md:col-span-1 space-y-4 p-4 bg-white shadow rounded-lg">
+                  <h2 className="text-lg font-semibold text-gray-700">Set Date Range</h2>
+                  <div>
+                    <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">Start Date:</label>
                     <input
                       type="date"
                       id="startDate"
                       value={startDate}
                       onChange={handleStartDateChange}
-                      min={new Date().toISOString().split('T')[0]}
+                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                     />
                   </div>
-                  <div className="flex-1">
-                    <label htmlFor="endDate" className="block text-sm font-medium mb-1">
-                      End Date
-                    </label>
+                  <div>
+                    <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">End Date:</label>
                     <input
                       type="date"
                       id="endDate"
                       value={endDate}
                       onChange={handleEndDateChange}
-                      disabled={!startDate}
-                      min={startDate}
-                      title={!startDate ? "Please select a start date first" : ""}
+                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                     />
                   </div>
+                  {dateError && <p className="text-sm text-red-500">{dateError}</p>}
                 </div>
-                {dateError && <p className="feedback-error text-sm mt-2">{dateError}</p>}
+
+                {/* Calendar Display */}
+                <div className="md:col-span-2 p-4 bg-white shadow rounded-lg flex justify-center">
+                  <Calendar
+                    onChange={(value: Value) => {
+                      if (Array.isArray(value)) {
+                        // Range selection, not actively used for single date picking in this setup
+                      } else if (value) {
+                        // Single date selection if needed, or just use for navigation
+                        // setActiveStartDate(value);
+                      }
+                    }}
+                    activeStartDate={activeStartDate}
+                    onActiveStartDateChange={({ activeStartDate }) => activeStartDate && setActiveStartDate(activeStartDate)}
+                    value={null} 
+                    selectRange={false}
+                    locale="en-US" // Set locale to make week start on Sunday
+                    tileContent={({ date, view }) => {
+                      if (view === 'month') {
+                        const day = date.getDate(); // The day number, e.g., 1, 5, 25
+
+                        const dateStr = date.toISOString().slice(0, 10);
+                        const employeeName = scheduleMap[dateStr];
+                        const dayName = getDayName(date);
+                        const isSchedulableDayOfWeek = schedulableDays.includes(dayName);
+                        const isInRange = inRangeSet.has(date.toDateString());
+
+                        let employeeBadgeContent = null;
+                        if (isInRange && isSchedulableDayOfWeek && employeeName) {
+                          employeeBadgeContent = (
+                            <p 
+                              className="text-xs text-white p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
+                              style={{ fontSize: '0.65rem' }}
+                              title={employeeName}
+                            >
+                              {employeeName}
+                            </p>
+                          );
+                        }
+
+                        // The component for the day number. Its color will be determined by CSS on the parent tile.
+                        const dayNumberComponent = <span style={{ fontWeight: 500 }}>{day}</span>;
+
+                        return (
+                          <div className="flex flex-col items-center justify-start h-full pt-1">
+                            {dayNumberComponent}
+                            {employeeBadgeContent}
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                    tileDisabled={({ date, view }) => {
+                        if (view === 'month') {
+                            const dateString = date.toDateString();
+                            const dayName = getDayName(date);
+                            // Disable if not in the selected date range OR if its day of the week is not schedulable
+                            if (!inRangeSet.has(dateString) || !schedulableDays.includes(dayName)) {
+                                return true;
+                            }
+                            return false; // Otherwise, it's enabled
+                        }
+                        return false;
+                    }}
+                    tileClassName={({ date, view }) => {
+                      if (view !== 'month') return undefined;
+
+                      const dateString = date.toDateString();
+                      const dayName = getDayName(date);
+
+                      // Apply 'range-day' style only if the date is in the selected range AND its day of the week is schedulable
+                      if (inRangeSet.has(dateString) && schedulableDays.includes(dayName)) {
+                        return 'range-day';
+                      }
+
+                      // For all other cases (e.g., in range but not a schedulable DayOfWeek, or out of range),
+                      // return undefined. These tiles will get base styling from .react-calendar__tile
+                      // and default react-calendar styles for neighboring/disabled tiles.
+                      return undefined;
+                    }}
+                    className="react-calendar-override"
+                  />
+                </div>
               </div>
 
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Monthly View</h2>
-                <Calendar
-                  activeStartDate={activeStartDate}
-                  onActiveStartDateChange={({ activeStartDate }) => {
-                    if (activeStartDate) {
-                      setActiveStartDate(activeStartDate);
-                    }
-                  }}
-                  tileClassName={({ date }) => isDateInRange(date) ? 'date-in-range' : null}
-                  className="border rounded-lg shadow-sm"
-                  calendarType="gregory"
-                  tileContent={({ date, view }) => {
-                    // Show names only on day tiles (view === 'month')
-                    if (view !== 'month') return null;
-                    const iso = date.toISOString().slice(0, 10);
-                    const emp = scheduleMap[iso];
-                    return emp ? (
-                      <span className="mt-1 block truncate text-xs font-semibold text-primary-blue">
-                        {emp}
-                      </span>
-                    ) : null;
-                  }}
-                />
-              </div>
-
+              {/* Generate Schedule Button and Display */}
               <button
                 className="mt-4 rounded bg-primary-blue px-4 py-2 text-white hover:opacity-90 disabled:opacity-50"
                 onClick={handleGenerateSchedule}
@@ -755,7 +903,7 @@ export default function RosterPage() {
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

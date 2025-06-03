@@ -58,7 +58,6 @@
 /* Neighboring Month Days */
 .react-calendar__month-view__days__day--neighboringMonth {
   color: var(--primary-blue) !important;
-  opacity: 0.5 !important;
 }
 
 /* Calendar Tiles */
