@@ -108,7 +108,7 @@ def solve(payload: Dict) -> List[Dict]:
     # --- Objective Function Components ---
     employee_total_costs = []
     assignments_to_cost_100_days = []
-    unmet_top_n_prefs_per_employee = [] # Deviation from MIN_TOP_N_DAYS_GUARANTEE for Top-3 days
+    assigned_rank1_days_per_employee = []
 
     for i in range(num_emp):
         # Total cost for employee i
@@ -119,35 +119,59 @@ def solve(payload: Dict) -> List[Dict]:
         cost_100_sum = sum(x[i][d] for d in range(num_days) if cost_matrix[i][d] == 100)
         assignments_to_cost_100_days.append(cost_100_sum)
         
-        # Unmet Top-N Preferences for employee i (soft constraint in objective)
-        # This is how many *more* top-3 days they would need to reach the guarantee if C5 was soft
-        # Or, can be used to push for even more than the hard C5 guarantee.
-        # Let's focus on hard C5 and use objective for overall cost and max_cost.
-        # Alternative: Penalty for not getting *enough* top-3 days (beyond C5)
-        # num_top3_assigned = sum(x[i][d] for d in set(emp_top3_pref_day_indices[i]))
-        # unmet_top3 = model.NewIntVar(0, num_days, f'unmet_top3_{i}')
-        # model.Add(unmet_top3 >= MIN_TOP_N_DAYS_GUARANTEE - num_top3_assigned) # If positive, it's a shortfall
-        # unmet_top_n_prefs_per_employee.append(unmet_top3)
+        if emp_rank1_day_indices[i]:
+            rank1_sum = sum(x[i][d] for d in emp_rank1_day_indices[i])
+            assigned_rank1_days_per_employee.append(rank1_sum)
+        else: # Employee has no rank-1 preferences, add a dummy 0 to keep list sizes aligned for min calculation
+              # This means they won't pull down the min_assigned_rank1_days objective if they genuinely have no rank-1 days.
+              # Or, we can make min_assigned_rank1_days only apply to employees with rank-1 preferences.
+              # For simplicity here, if no rank-1 days, they aren't part of this specific objective push.
+              # The hard constraint C4 already ensures they get one *if they have preferences*. This obj pushes for *more*.
+              pass # assigned_rank1_days_per_employee will be shorter, handle below
+
+    # P0: Maximize the minimum number of Rank-1 days assigned to any employee (who has rank-1 prefs)
+    min_assigned_rank1_days = model.NewIntVar(0, num_days, "min_assigned_rank1_days")
+    # Only consider employees who actually have rank-1 preferences for this objective goal
+    employees_with_rank1_prefs_indices = [i for i, R1_days in enumerate(emp_rank1_day_indices) if R1_days]
+    temp_assigned_rank1_vars_for_min_calc = []
+    for i in employees_with_rank1_prefs_indices:
+        # Need to re-create sum for these employees as model variables
+        emp_rank1_assigned_var = model.NewIntVar(0, num_days, f"emp_{i}_rank1_assigned_count")
+        model.Add(emp_rank1_assigned_var == sum(x[i][d] for d in emp_rank1_day_indices[i]))
+        model.Add(emp_rank1_assigned_var >= min_assigned_rank1_days)
+        temp_assigned_rank1_vars_for_min_calc.append(emp_rank1_assigned_var)
+    
+    if not employees_with_rank1_prefs_indices: # No one has rank-1 preferences, min_assigned_rank1_days is effectively 0
+        model.Add(min_assigned_rank1_days == 0)
 
     # P1: Minimize the maximum total cost for any single employee (Minimax cost)
     max_employee_total_cost = model.NewIntVar(0, num_days * 100, "max_employee_total_cost")
     for cost_var in employee_total_costs:
         model.Add(cost_var <= max_employee_total_cost)
 
-    # P2: Minimize total number of assignments to highly undesirable (cost 100) days
+    # P2: Minimize the maximum number of Cost-100 days for any single employee
+    max_cost_100_days_for_any_employee = model.NewIntVar(0, num_days, "max_cost_100_days_for_any_employee")
+    for cost_100_var in assignments_to_cost_100_days:
+        model.Add(cost_100_var <= max_cost_100_days_for_any_employee)
+
+    # P3: Minimize total number of assignments to highly undesirable (cost 100) days
     total_cost_100_assignments = sum(assignments_to_cost_100_days)
     
-    # P3: Minimize sum of all employees' total costs (utilitarian)
+    # P4: Minimize sum of all employees' total costs (utilitarian)
     sum_of_all_employee_costs = sum(employee_total_costs)
     
     # Define weights for the hierarchical objective
     # Priority: 1. Maximize fairness (minimax cost), 2. Avoid very bad days, 3. Minimize overall cost
-    W_MAX_COST = 10000  # Highest priority: Minimize the suffering of the worst-off employee
-    W_COST_100 = 100    # Next: Avoid assigning cost-100 days
-    W_TOTAL_COST = 1    # Finally: Minimize the sum of all costs
+    W_MIN_RANK1 = 1000000  # P0: Maximize min rank-1 days (highest objective priority)
+    W_MAX_COST = 10000    # P1: Minimize max individual total cost
+    W_MAX_UNDESIRABLE = 500 # P2: Minimize max individual cost-100 days
+    W_COST_100 = 100      # P3: Minimize total cost-100 days
+    W_TOTAL_COST = 1      # P4: Minimize sum of all costs (lowest objective priority)
 
     model.Minimize(
+        W_MIN_RANK1 * (-min_assigned_rank1_days) + # Note the negation to maximize
         W_MAX_COST * max_employee_total_cost +
+        W_MAX_UNDESIRABLE * max_cost_100_days_for_any_employee +
         W_COST_100 * total_cost_100_assignments +
         W_TOTAL_COST * sum_of_all_employee_costs
     )
@@ -156,17 +180,17 @@ def solve(payload: Dict) -> List[Dict]:
     # Solve
     # ------------------------------------------------------------------
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 25 # Adjusted for potentially more complex solve
+    solver.parameters.max_time_in_seconds = 30 # Slightly increased timeout
     # solver.parameters.log_search_progress = True # Useful for debugging
     status = solver.Solve(model)
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         error_message = f"Solver failed. Status: {solver.StatusName(status)}."
         if status == cp_model.INFEASIBLE:
-            error_message += " Constraints might be too strict (e.g., C4 Rank-1 guarantee, C5 Top-N guarantee, or workload balance for the given number of employees/days)."
+            error_message += " Constraints might be too strict (e.g., C4 Rank-1 guarantee, C5 Top-N guarantee, or workload balance for the given number of employees/days). Consider relaxing guarantees or increasing date range/employee count."
             # You could add more detailed infeasibility analysis here if OR-Tools provides it.
         elif status == cp_model.MODEL_INVALID:
-            error_message += " The model formulation is invalid."
+            error_message += " The model formulation is invalid. Check constraint definitions and variable ranges."
         raise RuntimeError(error_message)
 
     # Build output list - ENSURE DATE AND WEEKDAY CONSISTENCY

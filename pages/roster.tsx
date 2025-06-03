@@ -423,15 +423,18 @@ export default function RosterPage() {
       });
 
       // 2) Build the `dates` array
-      const buildDateRange = (start: Date, end: Date) => {
+      const buildDateRange = (startStr: string, endStr: string) => {
         const out: { date: string; weekday: number }[] = [];
-        const cur = new Date(start);
-        // Ensure 'cur' starts at the beginning of the day to avoid DST/timezone issues with comparisons
-        cur.setHours(0, 0, 0, 0);
-        const endDateComparison = new Date(end);
-        endDateComparison.setHours(23, 59, 59, 999); // Ensure 'end' is at the end of the day
+        
+        // Parse YYYY-MM-DD strings into Date objects representing local midnight
+        const startDateParts = startStr.split('-').map(Number);
+        const cur = new Date(startDateParts[0], startDateParts[1] - 1, startDateParts[2], 0, 0, 0, 0);
 
-        while (cur <= endDateComparison) {
+        const endDateParts = endStr.split('-').map(Number);
+        // loopEndDate will be midnight of the day *after* the selected endStr
+        const loopEndDate = new Date(endDateParts[0], endDateParts[1] - 1, endDateParts[2] + 1, 0, 0, 0, 0);
+
+        while (cur < loopEndDate) {
           out.push({
             date: cur.toISOString().slice(0, 10),
             weekday: cur.getDay(), // 0 = Sunday, 1 = Monday, etc.
@@ -448,7 +451,7 @@ export default function RosterPage() {
         return;
       }
 
-      const dates = buildDateRange(new Date(startDate), new Date(endDate));
+      const dates = buildDateRange(startDate, endDate);
       console.log("Generated dates array (to be sent to API):", JSON.parse(JSON.stringify(dates))); // DEBUG LINE
 
       // 3) POST to our API
