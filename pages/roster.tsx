@@ -7,11 +7,68 @@ import Calendar from 'react-calendar';
 // ---------- helpers ----------
 import { differenceInCalendarDays, addDays, isWithinInterval } from "date-fns";
 
+// Add custom styles for excluded dates
+const excludedDateStyles = `
+  .excluded-date {
+    background-color: #f3f4f6 !important;
+    color: #9ca3af !important;
+    cursor: not-allowed !important;
+  }
+  .excluded-date:hover {
+    background-color: #f3f4f6 !important;
+  }
+  .excluded-date.react-calendar__tile--active {
+    background-color: #f3f4f6 !important;
+    color: #9ca3af !important;
+  }
+`;
+
+// Inject the styles
+if (typeof document !== 'undefined') {
+  const styleSheet = document.createElement('style');
+  styleSheet.textContent = excludedDateStyles;
+  document.head.appendChild(styleSheet);
+}
+
 /** Inclusive list of every calendar day between two dates. */
 const getDatesBetween = (start: Date, end: Date) => {
   const days = differenceInCalendarDays(end, start) + 1;
   return [...Array(days)].map((_, i) => addDays(start, i).toDateString());
 };
+
+// Helper: Parse YYYY-MM-DD as local date (no time zone shift)
+function parseYYYYMMDDToLocalDate(dateString: string): Date | null {
+  const parts = dateString.split('-');
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+      return new Date(year, month, day, 12, 0, 0, 0); // noon local time
+    }
+  }
+  return null;
+}
+
+// Helper function to get all excluded dates as a Set of date strings
+const getExcludedDatesSet = (exclusions: ExclusionEntry[]): Set<string> => {
+  const excludedDatesSet = new Set<string>();
+  exclusions.forEach(entry => {
+    if (!entry.startDate) return;
+    const startDate = parseYYYYMMDDToLocalDate(entry.startDate);
+    if (!startDate) return;
+    if (entry.type === 'single') {
+      excludedDatesSet.add(startDate.toDateString());
+    } else if (entry.type === 'range' && entry.endDate) {
+      const endDate = parseYYYYMMDDToLocalDate(entry.endDate);
+      if (!endDate) return;
+      const datesInRange = getDatesBetween(startDate, endDate);
+      datesInRange.forEach(date => excludedDatesSet.add(date));
+    }
+  });
+  return excludedDatesSet;
+};
+
 // ---------- helpers ----------
 
 type ValuePiece = Date | null;
@@ -33,11 +90,20 @@ interface SavedRoster {
   schedulable_days: DayOfWeek[];
 }
 
+interface ExclusionEntry {
+  id: string;
+  type: 'single' | 'range';
+  startDate: string;
+  endDate?: string;
+  title?: string;
+}
+
 const DAYS_OF_WEEK: DayOfWeek[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function RosterPage() {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [excludedDates, setExcludedDates] = useState<ExclusionEntry[]>([]);
   const [activeStartDate, setActiveStartDate] = useState<Date>(new Date());
   const [dateError, setDateError] = useState<string>('');
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -308,6 +374,7 @@ export default function RosterPage() {
       setCurrentRosterName(selectedRoster.name);
       setCurrentRosterId(selectedRoster.id);
       setSchedulableDays(selectedRoster.schedulable_days || DAYS_OF_WEEK);
+      setSchedule(null);
     }
   };
 
@@ -438,6 +505,7 @@ export default function RosterPage() {
     setSelectedRosterId('');
     setNewRosterName('');
     setSchedulableDays(DAYS_OF_WEEK);
+    setSchedule(null);
   };
 
   // Add useEffect to initialize empty row when component mounts
@@ -486,6 +554,9 @@ export default function RosterPage() {
         return;
       }
 
+      // Get set of excluded dates
+      const excludedDatesSet = getExcludedDatesSet(excludedDates);
+
       // 1) Build the `employees` array (employeeData) - cost logic remains important for preferences on allowed days
       const rankWeights = [0, 20, 40];
       const employeeData = employees.map((emp: Employee) => {
@@ -511,17 +582,19 @@ export default function RosterPage() {
         return { name: emp.name, weekday_cost: cost };
       });
 
-      // 2) Build the `dates` array, NOW FILTERED by schedulableDays
+      // 2) Build the `dates` array, NOW FILTERED by schedulableDays AND excluded dates
       const buildDateRange = (startStr: string, endStr: string) => {
         const out: { date: string; weekday: number }[] = [];
-        const startDateParts = startStr.split('-').map(Number);
-        const cur = new Date(startDateParts[0], startDateParts[1] - 1, startDateParts[2], 0, 0, 0, 0);
-        const endDateParts = endStr.split('-').map(Number);
-        const loopEndDate = new Date(endDateParts[0], endDateParts[1] - 1, endDateParts[2] + 1, 0, 0, 0, 0);
-        
+        const startDateObj = parseYYYYMMDDToLocalDate(startStr);
+        const endDateObj = parseYYYYMMDDToLocalDate(endStr);
+        if (!startDateObj || !endDateObj) return out;
+        const cur = new Date(startDateObj.getTime());
+        const loopEndDate = new Date(endDateObj.getTime());
+        loopEndDate.setDate(loopEndDate.getDate() + 1);
         while (cur < loopEndDate) {
-          const currentDayName = DAYS_OF_WEEK[cur.getDay()]; // Get the string name of the day
-          if (schedulableDays.includes(currentDayName)) { // <<< FILTERING HAPPENS HERE
+          const currentDayName = DAYS_OF_WEEK[cur.getDay()];
+          const dateString = cur.toDateString();
+          if (schedulableDays.includes(currentDayName) && !excludedDatesSet.has(dateString)) {
             out.push({
               date: cur.toISOString().slice(0, 10),
               weekday: cur.getDay(),
@@ -531,24 +604,23 @@ export default function RosterPage() {
         }
         return out;
       };
-      const dates = buildDateRange(startDate, endDate); // 'dates' now only contains truly schedulable dates
+      const dates = buildDateRange(startDate, endDate);
       
       // Validate that there are actually dates to schedule after filtering
       if (dates.length === 0) {
-        // This error message now covers cases where the range was valid but no days within it matched schedulableDays
-        setError("No schedulable days fall within the selected date range based on your day-of-week selection, or the date range itself is invalid. Please adjust your selections.");
+        setError("No schedulable days fall within the selected date range based on your day-of-week selection and excluded dates, or the date range itself is invalid. Please adjust your selections.");
         setLoading(false);
         return;
       }
 
       console.log("Employee data for solver:", JSON.stringify(employeeData));
-      console.log("FILTERED Dates for solver:", JSON.stringify(dates)); // Log the filtered dates
+      console.log("FILTERED Dates for solver:", JSON.stringify(dates));
 
       // 3) POST to our API with the FILTERED dates list
       const res = await fetch('/api/generateSchedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employees: employeeData, dates }), // 'dates' is now pre-filtered
+        body: JSON.stringify({ employees: employeeData, dates }),
       });
 
       if (!res.ok) {
@@ -556,8 +628,8 @@ export default function RosterPage() {
       }
 
       const json = (await res.json()) as { date: string; employee: string; weekday: number }[];
-      setSchedule(json); // The schedule returned should now only contain assignments for the filtered dates
-      console.log('Received schedule (should be for filtered dates only):', json);
+      setSchedule(json);
+      console.log('Received schedule:', json);
     } catch (err: any) {
       console.error(err);
       setError(err.message ?? 'Unknown error');
@@ -589,6 +661,20 @@ export default function RosterPage() {
   const getDayName = (date: Date): DayOfWeek => {
     return DAYS_OF_WEEK[date.getDay()];
   };
+
+  // Helper: Compare two dates by year, month, day only
+  function isSameDay(a: Date, b: Date): boolean {
+    return a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate();
+  }
+  // Helper: Is date in [start, end] inclusive, by day only
+  function isDateInRangeInclusive(date: Date, start: Date, end: Date): boolean {
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const e = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    return d >= s && d <= e;
+  }
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -766,127 +852,273 @@ export default function RosterPage() {
                 </div>
               </div>
 
-              {/* MOVED: Date Range Inputs and Calendar Display - Now after roster sections */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                {/* Date Inputs */}
-                <div className="md:col-span-1 space-y-4 p-4 bg-white shadow rounded-lg">
-                  <h2 className="text-lg font-semibold text-gray-700">Set Date Range</h2>
-                  <div>
-                    <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">Start Date:</label>
-                    <input
-                      type="date"
-                      id="startDate"
-                      value={startDate}
-                      onChange={handleStartDateChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
+              {/* Date Range/Exclude Dates sidebar and Calendar side-by-side */}
+              <div className="w-full flex flex-col md:flex-row gap-6 mb-6">
+                {/* Sidebar: Date Inputs and Exclude Dates */}
+                <div className="w-full md:max-w-sm flex flex-col gap-6">
+                  <div className="space-y-4 p-4 bg-white shadow rounded-lg">
+                    <h2 className="text-lg font-semibold text-gray-700">Set Date Range</h2>
+                    <div>
+                      <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">Start Date:</label>
+                      <input
+                        type="date"
+                        id="startDate"
+                        value={startDate}
+                        onChange={handleStartDateChange}
+                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">End Date:</label>
+                      <input
+                        type="date"
+                        id="endDate"
+                        value={endDate}
+                        onChange={handleEndDateChange}
+                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                      />
+                    </div>
+                    {dateError && <p className="text-sm text-red-500">{dateError}</p>}
                   </div>
-                  <div>
-                    <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">End Date:</label>
-                    <input
-                      type="date"
-                      id="endDate"
-                      value={endDate}
-                      onChange={handleEndDateChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
+                  <div className="space-y-4 p-4 bg-white shadow rounded-lg">
+                    <h2 className="text-lg font-semibold text-gray-700">Exclude Dates</h2>
+                    <div className="space-y-4">
+                      <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
+                        {excludedDates.map((entry) => (
+                          <div key={entry.id} className="p-3 border border-gray-200 rounded-lg space-y-3">
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center space-x-2">
+                                <input
+                                  type="radio"
+                                  id={`single-${entry.id}`}
+                                  name={`type-${entry.id}`}
+                                  checked={entry.type === 'single'}
+                                  onChange={() => {
+                                    setExcludedDates(excludedDates.map(e => 
+                                      e.id === entry.id ? { ...e, type: 'single', endDate: undefined } : e
+                                    ));
+                                  }}
+                                  className="h-4 w-4 text-psu-blue"
+                                />
+                                <label htmlFor={`single-${entry.id}`} className="text-sm text-gray-700">Single Day</label>
+                                <input
+                                  type="radio"
+                                  id={`range-${entry.id}`}
+                                  name={`type-${entry.id}`}
+                                  checked={entry.type === 'range'}
+                                  onChange={() => {
+                                    setExcludedDates(excludedDates.map(e => 
+                                      e.id === entry.id ? { ...e, type: 'range' } : e
+                                    ));
+                                  }}
+                                  className="h-4 w-4 text-psu-blue ml-4"
+                                />
+                                <label htmlFor={`range-${entry.id}`} className="text-sm text-gray-700">Date Range</label>
+                              </div>
+                              <button
+                                onClick={() => setExcludedDates(excludedDates.filter(e => e.id !== entry.id))}
+                                className="text-red-500 hover:text-red-700"
+                                title="Remove exclusion"
+                              >
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              </button>
+                            </div>
+                            <div className="space-y-2">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">Start Date:</label>
+                                <input
+                                  type="date"
+                                  value={entry.startDate}
+                                  onChange={(e) => {
+                                    setExcludedDates(excludedDates.map(ex => 
+                                      ex.id === entry.id ? { ...ex, startDate: e.target.value } : ex
+                                    ));
+                                  }}
+                                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                />
+                              </div>
+                              {entry.type === 'range' && (
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700">End Date:</label>
+                                  <input
+                                    type="date"
+                                    value={entry.endDate || ''}
+                                    onChange={(e) => {
+                                      setExcludedDates(excludedDates.map(ex => 
+                                        ex.id === entry.id ? { ...ex, endDate: e.target.value } : ex
+                                      ));
+                                    }}
+                                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                  />
+                                </div>
+                              )}
+                              {/* Exclusion Title Input */}
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">Title (optional):</label>
+                                <input
+                                  type="text"
+                                  value={entry.title || ''}
+                                  onChange={e => setExcludedDates(excludedDates.map(ex =>
+                                    ex.id === entry.id ? { ...ex, title: e.target.value } : ex
+                                  ))}
+                                  placeholder="e.g. Christmas Break"
+                                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => {
+                          setExcludedDates([
+                            ...excludedDates,
+                            {
+                              id: Date.now().toString(),
+                              type: 'single',
+                              startDate: '',
+                            }
+                          ]);
+                        }}
+                        className="w-full bg-psu-blue text-white px-4 py-2 rounded font-semibold hover:bg-blue-600"
+                      >
+                        + Add Exclusion
+                      </button>
+                    </div>
                   </div>
-                  {dateError && <p className="text-sm text-red-500">{dateError}</p>}
                 </div>
+                {/* Calendar and Generate Schedule */}
+                <div className="flex-1 flex flex-col">
+                  <div className="p-4 bg-white shadow rounded-lg h-full">
+                    <Calendar
+                      onChange={(value: Value) => {
+                        if (Array.isArray(value)) {
+                          // Range selection, not actively used for single date picking in this setup
+                        } else if (value) {
+                          // Single date selection if needed, or just use for navigation
+                          // setActiveStartDate(value);
+                        }
+                      }}
+                      activeStartDate={activeStartDate}
+                      onActiveStartDateChange={({ activeStartDate }) => activeStartDate && setActiveStartDate(activeStartDate)}
+                      value={null} 
+                      selectRange={false}
+                      locale="en-US"
+                      tileContent={({ date, view }) => {
+                        if (view === 'month') {
+                          const day = date.getDate();
+                          const dateStr = date.toISOString().slice(0, 10);
+                          const employeeName = scheduleMap[dateStr];
+                          const dayName = getDayName(date);
+                          const isSchedulableDayOfWeek = schedulableDays.includes(dayName);
+                          const isInRange = inRangeSet.has(date.toDateString());
+                          const excludedDatesSet = getExcludedDatesSet(excludedDates);
+                          const isExcluded = excludedDatesSet.has(date.toDateString());
 
-                {/* Calendar Display */}
-                <div className="md:col-span-2 p-4 bg-white shadow rounded-lg flex justify-center">
-                  <Calendar
-                    onChange={(value: Value) => {
-                      if (Array.isArray(value)) {
-                        // Range selection, not actively used for single date picking in this setup
-                      } else if (value) {
-                        // Single date selection if needed, or just use for navigation
-                        // setActiveStartDate(value);
-                      }
-                    }}
-                    activeStartDate={activeStartDate}
-                    onActiveStartDateChange={({ activeStartDate }) => activeStartDate && setActiveStartDate(activeStartDate)}
-                    value={null} 
-                    selectRange={false}
-                    locale="en-US" // Set locale to make week start on Sunday
-                    tileContent={({ date, view }) => {
-                      if (view === 'month') {
-                        const day = date.getDate(); // The day number, e.g., 1, 5, 25
+                          // Find exclusion entry for this date (for title)
+                          let exclusionTitle: string | undefined = undefined;
+                          for (const entry of excludedDates) {
+                            if (!entry.startDate) continue;
+                            const start = parseYYYYMMDDToLocalDate(entry.startDate);
+                            if (!start) continue;
+                            if (entry.type === 'single') {
+                              if (isSameDay(start, date)) exclusionTitle = entry.title;
+                            } else if (entry.type === 'range' && entry.endDate) {
+                              const end = parseYYYYMMDDToLocalDate(entry.endDate);
+                              if (!end) continue;
+                              if (isDateInRangeInclusive(date, start, end)) exclusionTitle = entry.title;
+                            }
+                          }
 
-                        const dateStr = date.toISOString().slice(0, 10);
-                        const employeeName = scheduleMap[dateStr];
-                        const dayName = getDayName(date);
-                        const isSchedulableDayOfWeek = schedulableDays.includes(dayName);
-                        const isInRange = inRangeSet.has(date.toDateString());
+                          let employeeBadgeContent = null;
+                          if (isExcluded && exclusionTitle) {
+                            employeeBadgeContent = (
+                              <p
+                                className="text-xs text-gray-500 p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
+                                style={{ fontSize: '0.65rem' }}
+                                title={exclusionTitle}
+                              >
+                                {exclusionTitle}
+                              </p>
+                            );
+                          } else if (isInRange && isSchedulableDayOfWeek && employeeName && !isExcluded) {
+                            employeeBadgeContent = (
+                              <p 
+                                className="text-xs text-white p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
+                                style={{ fontSize: '0.65rem' }}
+                                title={employeeName}
+                              >
+                                {employeeName}
+                              </p>
+                            );
+                          }
 
-                        let employeeBadgeContent = null;
-                        if (isInRange && isSchedulableDayOfWeek && employeeName) {
-                          employeeBadgeContent = (
-                            <p 
-                              className="text-xs text-white p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
-                              style={{ fontSize: '0.65rem' }}
-                              title={employeeName}
+                          const dayNumberComponent = (
+                            <span 
+                              style={{ fontWeight: 500 }}
+                              title={isExcluded ? (exclusionTitle || "Excluded Date") : undefined}
                             >
-                              {employeeName}
-                            </p>
+                              {day}
+                            </span>
+                          );
+
+                          return (
+                            <div className="flex flex-col items-center justify-start h-full pt-1">
+                              {dayNumberComponent}
+                              {employeeBadgeContent}
+                            </div>
                           );
                         }
+                        return null;
+                      }}
+                      tileDisabled={({ date, view }) => {
+                          if (view === 'month') {
+                              const dateString = date.toDateString();
+                              const dayName = getDayName(date);
+                              // Disable if not in the selected date range OR if its day of the week is not schedulable
+                              if (!inRangeSet.has(dateString) || !schedulableDays.includes(dayName)) {
+                                  return true;
+                              }
+                              return false; // Otherwise, it's enabled
+                          }
+                          return false;
+                      }}
+                      tileClassName={({ date, view }) => {
+                        if (view !== 'month') return undefined;
 
-                        // The component for the day number. Its color will be determined by CSS on the parent tile.
-                        const dayNumberComponent = <span style={{ fontWeight: 500 }}>{day}</span>;
+                        const dateString = date.toDateString();
+                        const dayName = getDayName(date);
+                        const excludedDatesSet = getExcludedDatesSet(excludedDates);
 
-                        return (
-                          <div className="flex flex-col items-center justify-start h-full pt-1">
-                            {dayNumberComponent}
-                            {employeeBadgeContent}
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                    tileDisabled={({ date, view }) => {
-                        if (view === 'month') {
-                            const dateString = date.toDateString();
-                            const dayName = getDayName(date);
-                            // Disable if not in the selected date range OR if its day of the week is not schedulable
-                            if (!inRangeSet.has(dateString) || !schedulableDays.includes(dayName)) {
-                                return true;
-                            }
-                            return false; // Otherwise, it's enabled
+                        // If the date is excluded, return a special class
+                        if (excludedDatesSet.has(dateString)) {
+                          return 'excluded-date';
                         }
-                        return false;
-                    }}
-                    tileClassName={({ date, view }) => {
-                      if (view !== 'month') return undefined;
 
-                      const dateString = date.toDateString();
-                      const dayName = getDayName(date);
+                        // Apply 'range-day' style only if the date is in the selected range AND its day of the week is schedulable
+                        if (inRangeSet.has(dateString) && schedulableDays.includes(dayName)) {
+                          return 'range-day';
+                        }
 
-                      // Apply 'range-day' style only if the date is in the selected range AND its day of the week is schedulable
-                      if (inRangeSet.has(dateString) && schedulableDays.includes(dayName)) {
-                        return 'range-day';
-                      }
-
-                      // For all other cases (e.g., in range but not a schedulable DayOfWeek, or out of range),
-                      // return undefined. These tiles will get base styling from .react-calendar__tile
-                      // and default react-calendar styles for neighboring/disabled tiles.
-                      return undefined;
-                    }}
-                    className="react-calendar-override"
-                  />
+                        return undefined;
+                      }}
+                      className="react-calendar-override"
+                    />
+                  </div>
+                  <div className="flex justify-end mt-4">
+                    <button
+                      className="rounded bg-primary-blue px-4 py-2 text-white hover:opacity-90 disabled:opacity-50"
+                      onClick={handleGenerateSchedule}
+                      disabled={loading}
+                    >
+                      {loading ? 'Generating…' : 'Generate Schedule'}
+                    </button>
+                  </div>
+                  {error && <p className="mt-2 text-red-600">{error}</p>}
                 </div>
               </div>
-
-              {/* Generate Schedule Button and Display */}
-              <button
-                className="mt-4 rounded bg-primary-blue px-4 py-2 text-white hover:opacity-90 disabled:opacity-50"
-                onClick={handleGenerateSchedule}
-                disabled={loading}
-              >
-                {loading ? 'Generating…' : 'Generate Schedule'}
-              </button>
-              {error && <p className="mt-2 text-red-600">{error}</p>}
 
               {schedule && schedule.length > 0 && scheduleSummaryData.length > 0 && (
                 <div className="mt-8">
