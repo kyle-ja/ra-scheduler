@@ -43,7 +43,7 @@ export default function Navbar() {
           Welcome!
         </div>
       )}
-      <nav className="w-full bg-white shadow flex items-center justify-between px-6 py-3 mb-6">
+      <nav className="w-full bg-white shadow flex items-center justify-between px-6 py-3">
         <div className="flex items-center gap-8">
           <span className="text-xl font-bold text-psu-blue">Preference Scheduler</span>
           <Link href="/roster" legacyBehavior>

@@ -98,7 +98,27 @@ interface ExclusionEntry {
   title?: string;
 }
 
+interface DateSetting {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  excluded_dates: ExclusionEntry[];
+}
+
 const DAYS_OF_WEEK: DayOfWeek[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Add this helper for day abbreviations
+const DAY_ABBREVIATIONS: { [key in DayOfWeek]: string } = {
+  Sunday: 'Sun',
+  Monday: 'Mon',
+  Tuesday: 'Tue',
+  Wednesday: 'Wed',
+  Thursday: 'Thu',
+  Friday: 'Fri',
+  Saturday: 'Sat',
+  '': '',
+};
 
 export default function RosterPage() {
   const [startDate, setStartDate] = useState<string>('');
@@ -117,6 +137,9 @@ export default function RosterPage() {
   const [originalEmployees, setOriginalEmployees] = useState<Employee[]>([]);
   const [schedulableDays, setSchedulableDays] = useState<DayOfWeek[]>(DAYS_OF_WEEK);
   const [maxConsecutiveDays, setMaxConsecutiveDays] = useState<number>(2); // Default to 2
+  const [dateSettings, setDateSettings] = useState<DateSetting[]>([]);
+  const [newSettingName, setNewSettingName] = useState('');
+  const [selectedSettingId, setSelectedSettingId] = useState<string>('');
 
   const inRangeSet = useMemo(() => {
     if (!startDate || !endDate) { // startDate and endDate are "YYYY-MM-DD"
@@ -156,6 +179,31 @@ export default function RosterPage() {
   // Shows a spinner or error message later
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Calculate total number of schedulable days
+  const totalSchedulableDays = useMemo(() => {
+    if (!startDate || !endDate) return 0;
+    
+    const startDateObj = parseYYYYMMDDToLocalDate(startDate);
+    const endDateObj = parseYYYYMMDDToLocalDate(endDate);
+    if (!startDateObj || !endDateObj) return 0;
+
+    const excludedDatesSet = getExcludedDatesSet(excludedDates);
+    let count = 0;
+    const cur = new Date(startDateObj.getTime());
+    const loopEndDate = new Date(endDateObj.getTime());
+    loopEndDate.setDate(loopEndDate.getDate() + 1);
+
+    while (cur < loopEndDate) {
+      const currentDayName = DAYS_OF_WEEK[cur.getDay()];
+      const dateString = cur.toDateString();
+      if (schedulableDays.includes(currentDayName) && !excludedDatesSet.has(dateString)) {
+        count++;
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    return count;
+  }, [startDate, endDate, schedulableDays, excludedDates]);
 
   // Fast lookup: "YYYY-MM-DD" → employee name
   const scheduleMap = useMemo(() => {
@@ -259,6 +307,143 @@ export default function RosterPage() {
 
     loadUserAndRosters();
   }, []);
+
+  // Add this after other useEffect hooks
+  useEffect(() => {
+    if (userId) {
+      fetchDateSettings();
+    }
+  }, [userId]);
+
+  const fetchDateSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('date_settings')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setDateSettings(data || []);
+    } catch (error) {
+      console.error('Error fetching date settings:', error);
+    }
+  };
+
+  const handleSaveDateSetting = async () => {
+    if (!newSettingName.trim()) {
+      setFeedbackMessage({ type: 'error', message: 'Please enter a name for the date setting' });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('date_settings')
+        .insert([
+          {
+            name: newSettingName,
+            start_date: startDate,
+            end_date: endDate,
+            excluded_dates: excludedDates,
+            user_id: userId
+          }
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setDateSettings([data, ...dateSettings]);
+      setNewSettingName('');
+      setFeedbackMessage({ type: 'success', message: 'Date setting saved successfully' });
+    } catch (error) {
+      console.error('Error saving date setting:', error);
+      setFeedbackMessage({ type: 'error', message: 'Failed to save date setting' });
+    }
+  };
+
+  const handleUpdateDateSetting = async (settingId: string) => {
+    try {
+      const { error } = await supabase
+        .from('date_settings')
+        .update({
+          start_date: startDate,
+          end_date: endDate,
+          excluded_dates: excludedDates
+        })
+        .eq('id', settingId);
+
+      if (error) throw error;
+
+      setDateSettings(dateSettings.map(s => 
+        s.id === settingId 
+          ? { ...s, start_date: startDate, end_date: endDate, excluded_dates: excludedDates }
+          : s
+      ));
+      setFeedbackMessage({ type: 'success', message: 'Date setting updated successfully' });
+    } catch (error) {
+      console.error('Error updating date setting:', error);
+      setFeedbackMessage({ type: 'error', message: 'Failed to update date setting' });
+    }
+  };
+
+  const handleClearSettings = () => {
+    setStartDate('');
+    setEndDate('');
+    setExcludedDates([]);
+    setSelectedSettingId('');
+    setDateError('');
+  };
+
+  const handleLoadDateSetting = async (settingId: string) => {
+    const setting = dateSettings.find(s => s.id === settingId);
+    if (setting) {
+      setStartDate(setting.start_date);
+      setEndDate(setting.end_date);
+      setExcludedDates(setting.excluded_dates);
+      setSelectedSettingId(settingId);
+    }
+  };
+
+  // Add function to check if a setting has been modified
+  const hasSettingChanged = (settingId: string): boolean => {
+    const setting = dateSettings.find(s => s.id === settingId);
+    if (!setting) return false;
+
+    // Check if dates have changed
+    if (setting.start_date !== startDate || setting.end_date !== endDate) return true;
+
+    // Check if excluded dates have changed
+    if (setting.excluded_dates.length !== excludedDates.length) return true;
+
+    // Deep compare excluded dates
+    return setting.excluded_dates.some((oldExclusion, index) => {
+      const newExclusion = excludedDates[index];
+      if (!newExclusion) return true;
+      return (
+        oldExclusion.type !== newExclusion.type ||
+        oldExclusion.startDate !== newExclusion.startDate ||
+        oldExclusion.endDate !== newExclusion.endDate ||
+        oldExclusion.title !== newExclusion.title
+      );
+    });
+  };
+
+  const handleDeleteDateSetting = async (settingId: string) => {
+    try {
+      const { error } = await supabase
+        .from('date_settings')
+        .delete()
+        .eq('id', settingId);
+
+      if (error) throw error;
+
+      setDateSettings(dateSettings.filter(s => s.id !== settingId));
+      setFeedbackMessage({ type: 'success', message: 'Date setting deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting date setting:', error);
+      setFeedbackMessage({ type: 'error', message: 'Failed to delete date setting' });
+    }
+  };
 
   const handleSaveRoster = async () => {
     if (!newRosterName.trim() || !userId) {
@@ -407,12 +592,20 @@ export default function RosterPage() {
     if (newStartDate) {
       setActiveStartDate(new Date(newStartDate));
     }
+    // Clear schedule if it exists
+    if (schedule) {
+      setSchedule(null);
+    }
   };
 
   const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newEndDate = e.target.value;
     setEndDate(newEndDate);
     validateDates(startDate, newEndDate);
+    // Clear schedule if it exists
+    if (schedule) {
+      setSchedule(null);
+    }
   };
 
   // Helper function to check if a date is in the selected range
@@ -442,6 +635,25 @@ export default function RosterPage() {
         preferences: Array(schedulableDays.length).fill(''),
       },
     ]);
+  };
+
+  // Add validation function for date range exclusions
+  const validateDateRangeExclusion = (startDate: string, endDate: string | undefined, type: 'single' | 'range'): string | null => {
+    if (!startDate) return null;
+    
+    if (type === 'range') {
+      if (!endDate) {
+        return 'End date is required for date range exclusions';
+      }
+      
+      const start = parseYYYYMMDDToLocalDate(startDate);
+      const end = parseYYYYMMDDToLocalDate(endDate);
+      
+      if (!start || !end) return 'Invalid date format';
+      if (end < start) return 'End date must be after start date';
+    }
+    
+    return null;
   };
 
   const handleRemoveEmployee = (id: string) => {
@@ -555,6 +767,16 @@ export default function RosterPage() {
         return;
       }
 
+      // Check for incomplete date range exclusions
+      const incompleteRangeExclusions = excludedDates.some(entry => 
+        entry.type === 'range' && (!entry.startDate || !entry.endDate)
+      );
+      if (incompleteRangeExclusions) {
+        setError("Please complete all date range exclusions by providing both start and end dates.");
+        setLoading(false);
+        return;
+      }
+
       // Get set of excluded dates
       const excludedDatesSet = getExcludedDatesSet(excludedDates);
 
@@ -625,15 +847,31 @@ export default function RosterPage() {
       });
 
       if (!res.ok) {
-        throw new Error(`API ${res.status}: ${await res.text()}`);
+        const errorText = await res.text();
+        throw new Error(`Failed to generate schedule: ${errorText}`);
       }
 
       const json = (await res.json()) as { date: string; employee: string; weekday: number }[];
+      
+      // Validate that we received a valid schedule
+      if (!json || !Array.isArray(json) || json.length === 0) {
+        throw new Error("No valid schedule could be generated with the current settings. Please adjust your inputs and try again.");
+      }
+
       setSchedule(json);
       console.log('Received schedule:', json);
     } catch (err: any) {
       console.error(err);
-      setError(err.message ?? 'Unknown error');
+      // Show a user-friendly error message if the error contains backend/traceback details
+      let userMessage = 'A schedule could not be generated with the current settings. This is usually because there are not enough available days, too many restrictions, or not enough employees to cover the schedule. Please adjust your date range, excluded dates, or employee preferences and try again.';
+      if (err && typeof err.message === 'string') {
+        // If the error message is a simple string without traceback, show it
+        if (!err.message.includes('Traceback') && !err.message.includes('RuntimeError')) {
+          userMessage = err.message;
+        }
+      }
+      setError(userMessage);
+      setSchedule(null); // Clear any existing schedule on error
     } finally {
       setLoading(false);
     }
@@ -760,513 +998,648 @@ export default function RosterPage() {
     XLSX.writeFile(wb, fileName);
   };
 
+  // Add effect to clear schedule when excluded dates change
+  useEffect(() => {
+    if (schedule) {
+      setSchedule(null);
+    }
+  }, [excludedDates]);
+
+  // Add effect to clear schedule when schedulable days change
+  useEffect(() => {
+    if (schedule) {
+      setSchedule(null);
+    }
+  }, [schedulableDays]);
+
   return (
     <div className="min-h-screen bg-gray-100">
       <main className="container mx-auto p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto">
-          <div style={{
-            background: '#fff',
-            borderRadius: '1.25rem',
-            boxShadow: '0 4px 32px rgba(0,0,0,0.10)',
-            padding: '2.5rem 2rem',
-          }}>
-            <div className="main-content">
-              <h1 className="text-2xl font-bold mb-6">Roster Management</h1>
-
-              {/* Roster Management Menu */}
-              <div className="mb-8 bg-white rounded-lg shadow p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="flex-1">
-                      <select
-                        id="loadRoster"
-                        value={selectedRosterId}
-                        onChange={(e) => handleLoadRoster(e.target.value)}
-                        className="w-full"
+        <div className="max-w-7xl mx-auto flex flex-col gap-8">
+          {/* Roster Management Section */}
+          <div className="bg-white rounded-2xl shadow p-8 border border-gray-200">
+            <h1 className="text-2xl font-bold mb-6">Roster Management</h1>
+            {/* Roster Management Menu */}
+            <div className="mb-8 bg-white rounded-lg shadow p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="flex-1">
+                    <select
+                      id="loadRoster"
+                      value={selectedRosterId}
+                      onChange={(e) => handleLoadRoster(e.target.value)}
+                      className="w-full"
+                    >
+                      <option value="">Load Saved Roster</option>
+                      {savedRosters.map(roster => (
+                        <option key={roster.id} value={roster.id}>
+                          {roster.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        id="rosterName"
+                        value={newRosterName}
+                        onChange={(e) => setNewRosterName(e.target.value)}
+                        placeholder="Save Current Roster As..."
+                        className="flex-1"
+                      />
+                      <button
+                        onClick={handleSaveRoster}
+                        disabled={!newRosterName.trim()}
+                        className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
                       >
-                        <option value="">Load Saved Roster</option>
-                        {savedRosters.map(roster => (
-                          <option key={roster.id} value={roster.id}>
-                            {roster.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          id="rosterName"
-                          value={newRosterName}
-                          onChange={(e) => setNewRosterName(e.target.value)}
-                          placeholder="Save Current Roster As..."
-                          className="flex-1"
-                        />
-                        <button
-                          onClick={handleSaveRoster}
-                          disabled={!newRosterName.trim()}
-                          className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                        >
-                          Save
-                        </button>
-                      </div>
+                        Save
+                      </button>
                     </div>
                   </div>
                 </div>
-                {feedbackMessage && (
-                  <div className={`${feedbackMessage.type === 'success' ? 'feedback-success' : 'feedback-error'} mt-4`}>
-                    {feedbackMessage.message}
-                  </div>
-                )}
               </div>
-
-              {/* NEW: Day Selector Component */}
-              <div className="mb-8">
-                <DaySelector selectedDays={schedulableDays} onChange={setSchedulableDays} />
-              </div>
-
-              {/* Employee Roster Section */}
-              <div className="mb-8">
-                <div className="flex items-center mb-1">
-                  <h2 className="text-lg font-semibold m-0 mr-16">{currentRosterName}</h2>
+              {feedbackMessage && (
+                <div className={`${feedbackMessage.type === 'success' ? 'feedback-success' : 'feedback-error'} mt-4`}>
+                  {feedbackMessage.message}
                 </div>
-                <div className="flex gap-x-4 mt-1 mb-8">
-                  <button
-                    onClick={handleNewRoster}
-                    className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                  >
-                    New Roster
-                  </button>
-                  {currentRosterId && hasEmployeesChanged() && (
-                    <>
-                      <button
-                        onClick={handleUpdateRoster}
-                        className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                      >
-                        Update
-                      </button>
-                      <button
-                        onClick={handleDeleteCurrentRoster}
-                        className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                  {currentRosterId && !hasEmployeesChanged() && (
+              )}
+            </div>
+            {/* NEW: Day Selector Component */}
+            <div className="mb-8">
+              <DaySelector selectedDays={schedulableDays} onChange={setSchedulableDays} />
+            </div>
+            {/* Employee Roster Section */}
+            <div className="mb-8">
+              <div className="flex items-center mb-1">
+                <h2 className="text-lg font-semibold m-0 mr-16">{currentRosterName}</h2>
+              </div>
+              <div className="flex gap-x-4 mt-1 mb-8">
+                <button
+                  onClick={handleNewRoster}
+                  className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
+                >
+                  New Roster
+                </button>
+                {currentRosterId && hasEmployeesChanged() && (
+                  <>
+                    <button
+                      onClick={handleUpdateRoster}
+                      className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
+                    >
+                      Update
+                    </button>
                     <button
                       onClick={handleDeleteCurrentRoster}
                       className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
                     >
                       Delete
                     </button>
-                  )}
-                </div>
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
-                  <table className="min-w-full">
-                    <thead>
-                      <tr>
-                        <th></th>
-                        <th scope="col">
-                          Employee Name
+                  </>
+                )}
+                {currentRosterId && !hasEmployeesChanged() && (
+                  <button
+                    onClick={handleDeleteCurrentRoster}
+                    className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+              <div className="bg-white rounded-lg shadow overflow-x-auto">
+                <table className="min-w-full">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th scope="col">
+                        Employee Name
+                      </th>
+                      {Array.from({ length: schedulableDays.length }, (_, i) => (
+                        <th key={i} scope="col">
+                          {i + 1}{getOrdinalSuffix(i + 1)} Pref
                         </th>
-                        {Array.from({ length: schedulableDays.length }, (_, i) => (
-                          <th key={i} scope="col">
-                            {i + 1}{getOrdinalSuffix(i + 1)} Preference
-                          </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(employees || []).map((employee) => (
+                      <tr key={employee.id}>
+                        <td style={{ width: 40, textAlign: 'center' }}>
+                          <button
+                            onClick={() => handleRemoveEmployee(employee.id)}
+                            className="bg-psu-blue text-white px-2 py-1 rounded font-semibold"
+                            title="Delete employee"
+                          >
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </button>
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={employee.name}
+                            onChange={e => setEmployees(employees.map(emp => emp.id === employee.id ? { ...emp, name: e.target.value } : emp))}
+                            placeholder="Enter employee name"
+                            className="text-sm font-medium"
+                          />
+                        </td>
+                        {Array.from({ length: schedulableDays.length }, (_, index) => (
+                          <td key={index}>
+                            <select
+                              value={employee.preferences[index] || ''}
+                              onChange={e => handlePreferenceChange(employee.id, index, e.target.value as DayOfWeek)}
+                              className={`mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md ${
+                                employee.preferences[index] 
+                                  ? 'bg-green-50 border-green-300 text-green-700' 
+                                  : 'bg-gray-50 border-gray-300 text-gray-700'
+                              }`}
+                            >
+                              <option value="">Clear</option>
+                              {[employee.preferences[index], ...getAvailableDays(employee.preferences, index)]
+                                  .filter((value, i, self) => (schedulableDays.includes(value) || value === '') && self.indexOf(value) === i)
+                                  .map(day => (
+                                      <option key={day || `no-pref-${index}-${employee.id}`} value={day}>{DAY_ABBREVIATIONS[day] || day || 'Not Selected'}</option>
+                                  ))}
+                            </select>
+                          </td>
                         ))}
                       </tr>
-                    </thead>
-                    <tbody>
-                      {(employees || []).map((employee) => (
-                        <tr key={employee.id}>
-                          <td style={{ width: 40, textAlign: 'center' }}>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ marginTop: 16 }}>
+                  <button
+                    onClick={handleAddEmployee}
+                    className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
+                  >
+                    + Add Employee
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* Schedule Creation Section */}
+          <div className="bg-white rounded-2xl shadow p-8 border border-gray-200">
+            <h2 className="text-2xl font-bold mb-6">Schedule Creation</h2>
+            {/* Three horizontally aligned cards: Save Date Settings, Set Date Range, Exclude Dates */}
+            <div className="flex flex-col md:flex-row gap-6 mb-6">
+              {/* Save Date Settings */}
+              <div className="flex-1 min-w-[260px] bg-white shadow rounded-lg p-4 mb-4 md:mb-0">
+                <h2 className="text-lg font-semibold text-gray-700">Save Date Settings</h2>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    id="settingName"
+                    value={newSettingName}
+                    onChange={(e) => setNewSettingName(e.target.value)}
+                    className="block border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm flex-1"
+                    placeholder="Name this setup"
+                    style={{ minWidth: 0 }}
+                  />
+                  <button
+                    onClick={handleSaveDateSetting}
+                    className="bg-psu-blue text-white px-2 py-2 rounded font-semibold flex items-center justify-center"
+                    style={{ minWidth: 0, height: '2.25rem', width: '2.25rem' }}
+                    title="Save settings"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M5 10.5L8.5 14L15 7" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+                {dateSettings.length > 0 && (
+                  <div className="mt-4">
+                    <h3 className="text-md font-semibold text-gray-700 mb-2">Saved Settings</h3>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {dateSettings.map((setting) => (
+                        <div key={setting.id} className="flex items-center justify-between p-2 border rounded-md">
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="radio"
+                              id={`setting-${setting.id}`}
+                              name="dateSetting"
+                              checked={selectedSettingId === setting.id}
+                              onChange={() => handleLoadDateSetting(setting.id)}
+                              className="h-4 w-4 text-psu-blue"
+                            />
+                            <label htmlFor={`setting-${setting.id}`} className="text-sm text-gray-700">
+                              {setting.name}
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {selectedSettingId === setting.id && hasSettingChanged(setting.id) && (
+                              <button
+                                onClick={() => handleUpdateDateSetting(setting.id)}
+                                className="bg-psu-blue text-white px-3 py-1 rounded font-semibold text-sm"
+                                title="Update setting"
+                              >
+                                Update
+                              </button>
+                            )}
                             <button
-                              onClick={() => handleRemoveEmployee(employee.id)}
-                              className="bg-psu-blue text-white px-2 py-1 rounded font-semibold"
-                              title="Delete employee"
+                              onClick={() => handleDeleteDateSetting(setting.id)}
+                              className="bg-psu-blue text-white px-2 py-1 rounded font-semibold flex items-center justify-center"
+                              title="Delete setting"
+                              style={{ minWidth: 0, height: '2rem', width: '2rem' }}
                             >
                               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                               </svg>
                             </button>
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              value={employee.name}
-                              onChange={e => setEmployees(employees.map(emp => emp.id === employee.id ? { ...emp, name: e.target.value } : emp))}
-                              placeholder="Enter employee name"
-                              className="text-sm font-medium"
-                            />
-                          </td>
-                          {Array.from({ length: schedulableDays.length }, (_, index) => (
-                            <td key={index}>
-                              <select
-                                value={employee.preferences[index] || ''}
-                                onChange={e => handlePreferenceChange(employee.id, index, e.target.value as DayOfWeek)}
-                                className={`mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md ${
-                                  employee.preferences[index] 
-                                    ? 'bg-green-50 border-green-300 text-green-700' 
-                                    : 'bg-gray-50 border-gray-300 text-gray-700'
-                                }`}
-                              >
-                                <option value="">Clear Preference</option>
-                                {[employee.preferences[index], ...getAvailableDays(employee.preferences, index)]
-                                    .filter((value, i, self) => (schedulableDays.includes(value) || value === '') && self.indexOf(value) === i)
-                                    .map(day => (
-                                        <option key={day || `no-pref-${index}-${employee.id}`} value={day}>{day || 'Not Selected'}</option>
-                                    ))}
-                              </select>
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div style={{ marginTop: 16 }}>
-                    <button
-                      onClick={handleAddEmployee}
-                      className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                    >
-                      + Add Employee
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Date Range/Exclude Dates sidebar and Calendar side-by-side */}
-              <div className="w-full flex flex-col md:flex-row gap-6 mb-6">
-                {/* Sidebar: Date Inputs and Exclude Dates */}
-                <div className="w-full md:max-w-sm flex flex-col gap-6">
-                  <div className="space-y-4 p-4 bg-white shadow rounded-lg">
-                  <h2 className="text-lg font-semibold text-gray-700">Set Date Range</h2>
-                  <div>
-                    <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">Start Date:</label>
-                    <input
-                      type="date"
-                      id="startDate"
-                      value={startDate}
-                      onChange={handleStartDateChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">End Date:</label>
-                    <input
-                      type="date"
-                      id="endDate"
-                      value={endDate}
-                      min={startDate || undefined}
-                      onChange={handleEndDateChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  {/* Max Consecutive Days Slider START */}
-                  <div className="mt-4">
-                    <label htmlFor="maxConsecutiveDaysSlider" className="block text-sm font-medium text-gray-700">
-                      Most Consecutive Days Allowed: <span className="font-semibold text-psu-blue">{maxConsecutiveDays}</span>
-                    </label>
-                    <input
-                      type="range"
-                      id="maxConsecutiveDaysSlider"
-                      min="1"
-                      max="7" // Or a different reasonable upper limit, e.g., 14
-                      value={maxConsecutiveDays}
-                      onChange={(e) => setMaxConsecutiveDays(parseInt(e.target.value, 10))}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-1 accent-psu-blue"
-                    />
-                  </div>
-                  {/* Max Consecutive Days Slider END */}
-                  {dateError && <p className="text-sm text-red-500">{dateError}</p>}
-                </div>
-                  <div className="space-y-4 p-4 bg-white shadow rounded-lg">
-                    <h2 className="text-lg font-semibold text-gray-700">Exclude Dates</h2>
-                    <div className="space-y-4">
-                      <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
-                        {excludedDates.map((entry) => (
-                          <div key={entry.id} className="p-3 border border-gray-200 rounded-lg space-y-3">
-                            <div className="flex justify-between items-center">
-                              <div className="flex items-center space-x-2">
-                                <input
-                                  type="radio"
-                                  id={`single-${entry.id}`}
-                                  name={`type-${entry.id}`}
-                                  checked={entry.type === 'single'}
-                                  onChange={() => {
-                                    setExcludedDates(excludedDates.map(e => 
-                                      e.id === entry.id ? { ...e, type: 'single', endDate: undefined } : e
-                                    ));
-                                  }}
-                                  className="h-4 w-4 text-psu-blue"
-                                />
-                                <label htmlFor={`single-${entry.id}`} className="text-sm text-gray-700">Single Day</label>
-                                <input
-                                  type="radio"
-                                  id={`range-${entry.id}`}
-                                  name={`type-${entry.id}`}
-                                  checked={entry.type === 'range'}
-                                  onChange={() => {
-                                    setExcludedDates(excludedDates.map(e => 
-                                      e.id === entry.id ? { ...e, type: 'range' } : e
-                                    ));
-                                  }}
-                                  className="h-4 w-4 text-psu-blue ml-4"
-                                />
-                                <label htmlFor={`range-${entry.id}`} className="text-sm text-gray-700">Date Range</label>
-                              </div>
-                              <button
-                                onClick={() => setExcludedDates(excludedDates.filter(e => e.id !== entry.id))}
-                                className="bg-psu-blue text-white px-2 py-1 rounded font-semibold"
-                                title="Remove exclusion"
-                              >
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                              </button>
-                            </div>
-                            <div className="space-y-2">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700">Start Date:</label>
-                                <input
-                                  type="date"
-                                  value={entry.startDate}
-                                  onChange={(e) => {
-                                    setExcludedDates(excludedDates.map(ex => 
-                                      ex.id === entry.id ? { ...ex, startDate: e.target.value } : ex
-                                    ));
-                                  }}
-                                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                />
-                              </div>
-                              {entry.type === 'range' && (
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700">End Date:</label>
-                                  <input
-                                    type="date"
-                                    value={entry.endDate || ''}
-                                    min={entry.startDate || undefined}
-                                    onChange={(e) => {
-                                      setExcludedDates(excludedDates.map(ex => 
-                                        ex.id === entry.id ? { ...ex, endDate: e.target.value } : ex
-                                      ));
-                                    }}
-                                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                  />
-                                </div>
-                              )}
-                              {/* Exclusion Title Input */}
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700">Title (optional):</label>
-                                <input
-                                  type="text"
-                                  value={entry.title || ''}
-                                  onChange={e => setExcludedDates(excludedDates.map(ex =>
-                                    ex.id === entry.id ? { ...ex, title: e.target.value } : ex
-                                  ))}
-                                  placeholder="e.g. Christmas Break"
-                                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                />
-                              </div>
-                            </div>
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4">
                       <button
-                        onClick={() => {
-                          setExcludedDates([
-                            ...excludedDates,
-                            {
-                              id: Date.now().toString(),
-                              type: 'single',
-                              startDate: '',
-                            }
-                          ]);
-                        }}
-                        className="w-full bg-psu-blue text-white px-4 py-2 rounded font-semibold hover:bg-blue-600"
+                        onClick={handleClearSettings}
+                        className="w-full bg-gray-200 text-gray-700 px-4 py-2 rounded font-semibold hover:bg-gray-300"
                       >
-                        + Add Exclusion
+                        Clear Settings
                       </button>
                     </div>
                   </div>
-                </div>
-                {/* Calendar and Generate Schedule */}
-                <div className="flex-1 flex flex-col">
-                  <div className="p-4 bg-white shadow rounded-lg h-full">
-                  <Calendar
-                    onChange={(value: Value) => {
-                      if (Array.isArray(value)) {
-                        // Range selection, not actively used for single date picking in this setup
-                      } else if (value) {
-                        // Single date selection if needed, or just use for navigation
-                        // setActiveStartDate(value);
-                      }
-                    }}
-                    activeStartDate={activeStartDate}
-                    onActiveStartDateChange={({ activeStartDate }) => activeStartDate && setActiveStartDate(activeStartDate)}
-                    value={null} 
-                    selectRange={false}
-                      locale="en-US"
-                    tileContent={({ date, view }) => {
-                      if (view === 'month') {
-                          const day = date.getDate();
-                        const dateStr = date.toISOString().slice(0, 10);
-                        const employeeName = scheduleMap[dateStr];
-                        const dayName = getDayName(date);
-                        const isSchedulableDayOfWeek = schedulableDays.includes(dayName);
-                        const isInRange = inRangeSet.has(date.toDateString());
-                          const excludedDatesSet = getExcludedDatesSet(excludedDates);
-                          const isExcluded = excludedDatesSet.has(date.toDateString());
-
-                          // Find exclusion entry for this date (for title)
-                          let exclusionTitle: string | undefined = undefined;
-                          for (const entry of excludedDates) {
-                            if (!entry.startDate) continue;
-                            const start = parseYYYYMMDDToLocalDate(entry.startDate);
-                            if (!start) continue;
-                            if (entry.type === 'single') {
-                              if (isSameDay(start, date)) exclusionTitle = entry.title;
-                            } else if (entry.type === 'range' && entry.endDate) {
-                              const end = parseYYYYMMDDToLocalDate(entry.endDate);
-                              if (!end) continue;
-                              if (isDateInRangeInclusive(date, start, end)) exclusionTitle = entry.title;
-                            }
-                          }
-
-                        let employeeBadgeContent = null;
-                          if (isExcluded && exclusionTitle) {
-                            employeeBadgeContent = (
-                              <p
-                                className="text-xs text-gray-500 p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
-                                style={{ fontSize: '0.65rem' }}
-                                title={exclusionTitle}
-                              >
-                                {exclusionTitle}
-                              </p>
-                            );
-                          } else if (isInRange && isSchedulableDayOfWeek && employeeName && !isExcluded) {
-                          employeeBadgeContent = (
-                            <p 
-                              className="text-xs text-white p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
-                              style={{ fontSize: '0.65rem' }}
-                              title={employeeName}
-                            >
-                              {employeeName}
-                            </p>
-                          );
-                        }
-
-                          const dayNumberComponent = (
-                            <span 
-                              style={{ fontWeight: 500 }}
-                              title={isExcluded ? (exclusionTitle || "Excluded Date") : undefined}
-                            >
-                              {day}
-                            </span>
-                          );
-
-                        return (
-                          <div className="flex flex-col items-center justify-start h-full pt-1">
-                            {dayNumberComponent}
-                            {employeeBadgeContent}
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                    tileDisabled={({ date, view }) => {
-                        if (view === 'month') {
-                            const dateString = date.toDateString();
-                            const dayName = getDayName(date);
-                            // Disable if not in the selected date range OR if its day of the week is not schedulable
-                            if (!inRangeSet.has(dateString) || !schedulableDays.includes(dayName)) {
-                                return true;
-                            }
-                            return false; // Otherwise, it's enabled
-                        }
-                        return false;
-                    }}
-                    tileClassName={({ date, view }) => {
-                      if (view !== 'month') return undefined;
-
-                      const dateString = date.toDateString();
-                      const dayName = getDayName(date);
-                        const excludedDatesSet = getExcludedDatesSet(excludedDates);
-
-                        // If the date is excluded, return a special class
-                        if (excludedDatesSet.has(dateString)) {
-                          return 'excluded-date';
-                        }
-
-                      // Apply 'range-day' style only if the date is in the selected range AND its day of the week is schedulable
-                      if (inRangeSet.has(dateString) && schedulableDays.includes(dayName)) {
-                        return 'range-day';
-                      }
-
-                      return undefined;
-                    }}
-                    className="react-calendar-override"
+                )}
+              </div>
+              {/* Set Date Range */}
+              <div className="flex-1 min-w-[260px] bg-white shadow rounded-lg p-4 mb-4 md:mb-0">
+                <h2 className="text-lg font-semibold text-gray-700">Set Date Range</h2>
+                <div>
+                  <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">Start Date:</label>
+                  <input
+                    type="date"
+                    id="startDate"
+                    value={startDate}
+                    onChange={handleStartDateChange}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                   />
                 </div>
-                  <div className="mt-4 space-y-2">
-                    <div className="flex justify-end space-x-2">
-                      <button
-                        className="rounded bg-primary-blue px-4 py-2 text-white hover:opacity-90 disabled:opacity-50"
-                        onClick={handleGenerateSchedule}
-                        disabled={loading}
-                      >
-                        {loading ? 'Generating…' : 'Generate Schedule'}
-                      </button>
-                      {schedule && schedule.length > 0 && (
-                        <button
-                          className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
-                          onClick={handleExportToExcel}
-                          disabled={!schedule || schedule.length === 0}
-                        >
-                          Export to Excel
-                        </button>
-                      )}
-                    </div>
+                <div>
+                  <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">End Date:</label>
+                  <input
+                    type="date"
+                    id="endDate"
+                    value={endDate}
+                    min={startDate || undefined}
+                    onChange={handleEndDateChange}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  />
+                </div>
+                {/* Max Consecutive Days Slider START */}
+                <div className="mt-4">
+                  <label htmlFor="maxConsecutiveDaysSlider" className="block text-sm font-medium text-gray-700">
+                    Most Consecutive Days Allowed: <span className="font-semibold text-psu-blue">{maxConsecutiveDays}</span>
+                  </label>
+                  <input
+                    type="range"
+                    id="maxConsecutiveDaysSlider"
+                    min="1"
+                    max="7" // Or a different reasonable upper limit, e.g., 14
+                    value={maxConsecutiveDays}
+                    onChange={(e) => setMaxConsecutiveDays(parseInt(e.target.value, 10))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-1 accent-psu-blue"
+                  />
+                </div>
+                {/* Max Consecutive Days Slider END */}
+                {dateError && <p className="text-sm text-red-500">{dateError}</p>}
+              </div>
+              {/* Exclude Dates */}
+              <div className="flex-1 min-w-[260px] bg-white shadow rounded-lg p-4">
+                <h2 className="text-lg font-semibold text-gray-700">Exclude Dates</h2>
+                <div className="space-y-4">
+                  <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
+                    {excludedDates.map((entry) => (
+                      <div key={entry.id} className="p-3 border border-gray-200 rounded-lg space-y-3">
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="radio"
+                              id={`single-${entry.id}`}
+                              name={`type-${entry.id}`}
+                              checked={entry.type === 'single'}
+                              onChange={() => {
+                                setExcludedDates(excludedDates.map(e => 
+                                  e.id === entry.id ? { ...e, type: 'single', endDate: undefined } : e
+                                ));
+                                // Clear schedule if it exists
+                                if (schedule) {
+                                  setSchedule(null);
+                                }
+                              }}
+                              className="h-4 w-4 text-psu-blue"
+                            />
+                            <label htmlFor={`single-${entry.id}`} className="text-sm text-gray-700">Single Day</label>
+                            <input
+                              type="radio"
+                              id={`range-${entry.id}`}
+                              name={`type-${entry.id}`}
+                              checked={entry.type === 'range'}
+                              onChange={() => {
+                                setExcludedDates(excludedDates.map(e => 
+                                  e.id === entry.id ? { ...e, type: 'range' } : e
+                                ));
+                                // Clear schedule if it exists
+                                if (schedule) {
+                                  setSchedule(null);
+                                }
+                              }}
+                              className="h-4 w-4 text-psu-blue ml-4"
+                            />
+                            <label htmlFor={`range-${entry.id}`} className="text-sm text-gray-700">Date Range</label>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setExcludedDates(excludedDates.filter(e => e.id !== entry.id));
+                              // Clear schedule if it exists
+                              if (schedule) {
+                                setSchedule(null);
+                              }
+                            }}
+                            className="bg-psu-blue text-white px-2 py-1 rounded font-semibold"
+                            title="Remove exclusion"
+                          >
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700">Start Date:</label>
+                            <input
+                              type="date"
+                              value={entry.startDate}
+                              onChange={(e) => {
+                                setExcludedDates(excludedDates.map(ex => 
+                                  ex.id === entry.id ? { ...ex, startDate: e.target.value } : ex
+                                ));
+                                // Clear schedule if it exists
+                                if (schedule) {
+                                  setSchedule(null);
+                                }
+                              }}
+                              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            />
+                          </div>
+                          {entry.type === 'range' && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700">End Date:</label>
+                              <input
+                                type="date"
+                                value={entry.endDate || ''}
+                                min={entry.startDate || undefined}
+                                onChange={(e) => {
+                                  setExcludedDates(excludedDates.map(ex => 
+                                    ex.id === entry.id ? { ...ex, endDate: e.target.value } : ex
+                                  ));
+                                  // Clear schedule if it exists
+                                  if (schedule) {
+                                    setSchedule(null);
+                                  }
+                                }}
+                                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                              />
+                              {validateDateRangeExclusion(entry.startDate, entry.endDate, entry.type) && (
+                                <p className="text-sm text-red-500 mt-1">
+                                  {validateDateRangeExclusion(entry.startDate, entry.endDate, entry.type)}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          {/* Exclusion Title Input */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700">Title (optional):</label>
+                            <input
+                              type="text"
+                              value={entry.title || ''}
+                              onChange={e => {
+                                setExcludedDates(excludedDates.map(ex =>
+                                  ex.id === entry.id ? { ...ex, title: e.target.value } : ex
+                                ));
+                                // Clear schedule if it exists
+                                if (schedule) {
+                                  setSchedule(null);
+                                }
+                              }}
+                              placeholder="e.g. Christmas Break"
+                              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                  <button
+                    onClick={() => {
+                      setExcludedDates([
+                        ...excludedDates,
+                        {
+                          id: Date.now().toString(),
+                          type: 'single',
+                          startDate: '',
+                        }
+                      ]);
+                      // Clear schedule if it exists
+                      if (schedule) {
+                        setSchedule(null);
+                      }
+                    }}
+                    className="w-full bg-psu-blue text-white px-4 py-2 rounded font-semibold hover:bg-blue-600"
+                  >
+                    + Add Exclusion
+                  </button>
                 </div>
               </div>
-
-              {schedule && schedule.length > 0 && scheduleSummaryData.length > 0 && (
-                <div className="mt-8">
-                  <h2 className="text-xl font-semibold mb-4">Schedule Summary</h2>
-                  <div className="overflow-x-auto bg-white shadow rounded-lg">
-                    <table className="min-w-full">
-                      <thead>
-                        <tr>
-                          <th className="px-4 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Employee</th>
-                          {[1, 2, 3, 4, 5, 6, 7].map(n => (
-                            <th key={n} className="px-3 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                              {n}{getOrdinalSuffix(n)}
-                            </th>
-                          ))}
-                          <th className="px-3 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">No Pref</th>
-                          <th className="px-3 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Days</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white">
-                        {scheduleSummaryData.map((row, index) => (
-                          <tr key={row.employeeName + index} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                            <td className="px-4 py-3 border-b border-gray-200 whitespace-nowrap text-sm font-medium text-gray-900">{row.employeeName}</td>
-                            {row.prefCounts.map((count, i) => (
-                              <td key={i} className={`px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-center ${count === "not selected" ? "text-gray-400" : "text-gray-800"}`}>
-                                {count}
-                              </td>
-                            ))}
-                            <td className="px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800 text-center">{row.noPreferenceCount}</td>
-                            <td className="px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800 text-center">{row.totalDaysAssigned}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            </div>
+            {/* Generate/Export buttons row */}
+            <div className="flex flex-col gap-4 mb-6">
+              <div className="flex flex-row gap-4">
+                <button
+                  className="rounded bg-primary-blue px-4 py-2 text-white hover:opacity-90 disabled:opacity-50"
+                  onClick={handleGenerateSchedule}
+                  disabled={loading}
+                >
+                  {loading ? 'Generating…' : `Generate Schedule for ${totalSchedulableDays} Days`}
+                </button>
+                {schedule && schedule.length > 0 && (
+                  <button
+                    className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
+                    onClick={handleExportToExcel}
+                    disabled={!schedule || schedule.length === 0}
+                  >
+                    Export to Excel
+                  </button>
+                )}
+              </div>
+              {error && (
+                <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-red-700">
+                        {error}
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
             </div>
+            {/* Calendar full width card */}
+            <div className="bg-white shadow rounded-lg p-4 w-full max-w-full overflow-x-auto mb-8">
+              <Calendar
+                onChange={(value: Value) => {
+                  if (Array.isArray(value)) {
+                    // Range selection, not actively used for single date picking in this setup
+                  } else if (value) {
+                    // Single date selection if needed, or just use for navigation
+                    // setActiveStartDate(value);
+                  }
+                }}
+                activeStartDate={activeStartDate}
+                onActiveStartDateChange={({ activeStartDate }) => activeStartDate && setActiveStartDate(activeStartDate)}
+                value={null} 
+                selectRange={false}
+                  locale="en-US"
+                tileContent={({ date, view }) => {
+                  if (view === 'month') {
+                      const day = date.getDate();
+                    const dateStr = date.toISOString().slice(0, 10);
+                    const employeeName = scheduleMap[dateStr];
+                    const dayName = getDayName(date);
+                    const isSchedulableDayOfWeek = schedulableDays.includes(dayName);
+                    const isInRange = inRangeSet.has(date.toDateString());
+                      const excludedDatesSet = getExcludedDatesSet(excludedDates);
+                      const isExcluded = excludedDatesSet.has(date.toDateString());
+
+                      // Find exclusion entry for this date (for title)
+                      let exclusionTitle: string | undefined = undefined;
+                      for (const entry of excludedDates) {
+                        if (!entry.startDate) continue;
+                        const start = parseYYYYMMDDToLocalDate(entry.startDate);
+                        if (!start) continue;
+                        if (entry.type === 'single') {
+                          if (isSameDay(start, date)) exclusionTitle = entry.title;
+                        } else if (entry.type === 'range' && entry.endDate) {
+                          const end = parseYYYYMMDDToLocalDate(entry.endDate);
+                          if (!end) continue;
+                          if (isDateInRangeInclusive(date, start, end)) exclusionTitle = entry.title;
+                        }
+                      }
+
+                    let employeeBadgeContent = null;
+                      if (isExcluded && exclusionTitle) {
+                        employeeBadgeContent = (
+                          <p
+                            className="text-xs text-gray-500 p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
+                            style={{ fontSize: '0.65rem' }}
+                            title={exclusionTitle}
+                          >
+                            {exclusionTitle}
+                          </p>
+                        );
+                      } else if (isInRange && isSchedulableDayOfWeek && employeeName && !isExcluded) {
+                      employeeBadgeContent = (
+                        <p 
+                          className="text-xs text-white p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
+                          style={{ fontSize: '0.65rem' }}
+                          title={employeeName}
+                        >
+                          {employeeName}
+                        </p>
+                      );
+                    }
+
+                      const dayNumberComponent = (
+                        <span 
+                          style={{ fontWeight: 500 }}
+                          title={isExcluded ? (exclusionTitle || "Excluded Date") : undefined}
+                        >
+                          {day}
+                        </span>
+                      );
+
+                    return (
+                      <div className="flex flex-col items-center justify-start h-full pt-1">
+                        {dayNumberComponent}
+                        {employeeBadgeContent}
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+                tileDisabled={({ date, view }) => {
+                    if (view === 'month') {
+                        const dateString = date.toDateString();
+                        const dayName = getDayName(date);
+                        // Disable if not in the selected date range OR if its day of the week is not schedulable
+                        if (!inRangeSet.has(dateString) || !schedulableDays.includes(dayName)) {
+                            return true;
+                        }
+                        return false; // Otherwise, it's enabled
+                    }
+                    return false;
+                }}
+                tileClassName={({ date, view }) => {
+                  if (view !== 'month') return undefined;
+
+                  const dateString = date.toDateString();
+                  const dayName = getDayName(date);
+                    const excludedDatesSet = getExcludedDatesSet(excludedDates);
+
+                    // If the date is excluded, return a special class
+                    if (excludedDatesSet.has(dateString)) {
+                      return 'excluded-date';
+                    }
+
+                  // Apply 'range-day' style only if the date is in the selected range AND its day of the week is schedulable
+                  if (inRangeSet.has(dateString) && schedulableDays.includes(dayName)) {
+                    return 'range-day';
+                  }
+
+                  return undefined;
+                }}
+                className="react-calendar-override"
+              />
+            </div>
+            {/* Schedule Summary full width card */}
+            {schedule && schedule.length > 0 && scheduleSummaryData.length > 0 && (
+              <div className="bg-white shadow rounded-lg p-4 w-full max-w-full overflow-x-auto">
+                <h2 className="text-xl font-semibold mb-4">Schedule Summary</h2>
+                <table className="min-w-full w-full max-w-full">
+                  <thead>
+                    <tr>
+                      <th className="px-4 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Employee</th>
+                        {[1, 2, 3, 4, 5, 6, 7].map(n => (
+                          <th key={n} className="px-3 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            {n}{getOrdinalSuffix(n)}
+                          </th>
+                        ))}
+                        <th className="px-3 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">No Pref</th>
+                        <th className="px-3 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Days</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {scheduleSummaryData.map((row, index) => (
+                      <tr key={row.employeeName + index} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
+                        <td className="px-4 py-3 border-b border-gray-200 whitespace-nowrap text-sm font-medium text-gray-900">{row.employeeName}</td>
+                          {row.prefCounts.map((count, i) => (
+                            <td key={i} className={`px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-center ${count === "not selected" ? "text-gray-400" : "text-gray-800"}`}>
+                              {count}
+                            </td>
+                          ))}
+                          <td className="px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800 text-center">{row.noPreferenceCount}</td>
+                          <td className="px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800 text-center">{row.totalDaysAssigned}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       </main>
