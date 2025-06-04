@@ -139,6 +139,7 @@
     border: 1px solid #eee !important; 
   }
 
+  /* Ensure default react-calendar day number is hidden (placed last for max specificity) */
   .react-calendar__tile abbr {
     display: none !important;
   }
@@ -306,4 +307,15 @@
   .react-calendar__month-view__days__day--neighboringMonth {
     opacity: 1 !important;
   }
+}
+
+/* FINAL OVERRIDE: Hide react-calendar default day number */
+.react-calendar__tile abbr {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  width: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
 }

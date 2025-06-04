@@ -1,10 +1,17 @@
-import type { AppProps } from "next/app";
+import '../styles/globals.css';
+import type { AppProps } from 'next/app';
 import 'react-calendar/dist/Calendar.css';
-import "../styles/globals.css";
 import "../styles/calendar.css";
 import "../styles/calendarOverrides.css";
+import Navbar from '../components/Navbar';
 
-
-export default function App({ Component, pageProps }: AppProps) {
-  return <Component {...pageProps} />;
+function MyApp({ Component, pageProps }: AppProps) {
+  return (
+    <>
+      <Navbar />
+      <Component {...pageProps} />
+    </>
+  );
 }
+
+export default MyApp;

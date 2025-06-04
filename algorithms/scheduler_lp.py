@@ -29,6 +29,8 @@ from ortools.sat.python import cp_model
 def solve(payload: Dict) -> List[Dict]:
     employees = payload["employees"]
     dates = payload["dates"]
+    # Read max_consecutive_days from payload, default to 2 if not present
+    max_consecutive_days = payload.get("max_consecutive_days", 2)
 
     num_emp = len(employees)
     num_days = len(dates)
@@ -50,13 +52,15 @@ def solve(payload: Dict) -> List[Dict]:
         model.Add(sum(x[i][d] for i in range(num_emp)) == 1)
 
     # ------------------------------------------------------------------
-    # C2: No employee works >2 days in a row
+    # C2: No employee works > X days in a row
     # ------------------------------------------------------------------
     for i in range(num_emp):
-        for d in range(num_days - 2):
-            # If an employee works day d and d+1, they cannot work day d+2
-            # This is equivalent to x[i][d] + x[i][d+1] + x[i][d+2] <= 2
-            model.Add(x[i][d] + x[i][d + 1] + x[i][d + 2] <= 2)
+        # Iterate up to num_days - max_consecutive_days because the sum looks ahead `max_consecutive_days` times
+        # (i.e., includes `max_consecutive_days + 1` terms: d, d+1, ..., d+max_consecutive_days)
+        for d in range(num_days - max_consecutive_days):
+            # An employee cannot work `max_consecutive_days + 1` days in a row.
+            # Sum of assignments over `max_consecutive_days + 1` consecutive days must be <= `max_consecutive_days`.
+            model.Add(sum(x[i][d + k] for k in range(max_consecutive_days + 1)) <= max_consecutive_days)
 
     # ------------------------------------------------------------------
     # C3: Balanced workload (+/-1 day from average)
@@ -185,12 +189,34 @@ def solve(payload: Dict) -> List[Dict]:
     status = solver.Solve(model)
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        error_message = f"Solver failed. Status: {solver.StatusName(status)}."
+        error_message = "Unable to find a valid schedule. "
         if status == cp_model.INFEASIBLE:
-            error_message += " Constraints might be too strict (e.g., C4 Rank-1 guarantee, C5 Top-N guarantee, or workload balance for the given number of employees/days). Consider relaxing guarantees or increasing date range/employee count."
-            # You could add more detailed infeasibility analysis here if OR-Tools provides it.
+            # Check for common infeasibility causes
+            if num_days < num_emp:
+                error_message += f"There are {num_days} days to schedule but {num_emp} employees. Each employee needs at least one day, but there aren't enough days to go around."
+            else:
+                # Check if any employee has no available days due to preferences
+                emp_with_no_available_days = []
+                for i, emp in enumerate(employees):
+                    has_available_day = False
+                    for d in range(num_days):
+                        if cost_matrix[i][d] < 1000:  # Day is available (not excluded)
+                            has_available_day = True
+                            break
+                    if not has_available_day:
+                        emp_with_no_available_days.append(emp["name"])
+                
+                if emp_with_no_available_days:
+                    error_message += f"Employee(s) {', '.join(emp_with_no_available_days)} have no available days to work based on their preferences and the selected schedulable days."
+                else:
+                    error_message += "The solver constraints are too strict to find a solution. This could be due to:"
+                    error_message += "\n1. Not enough days to satisfy everyone's preferences"
+                    error_message += "\n2. Too many consecutive work day restrictions"
+
         elif status == cp_model.MODEL_INVALID:
-            error_message += " The model formulation is invalid. Check constraint definitions and variable ranges."
+            error_message += "The scheduling model is invalid. This is likely due to an internal error."
+        elif status == cp_model.UNKNOWN:
+            error_message += "The solver could not determine if a solution exists within the time limit. Try reducing the date range."
         raise RuntimeError(error_message)
 
     # Build output list - ENSURE DATE AND WEEKDAY CONSISTENCY

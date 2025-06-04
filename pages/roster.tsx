@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import Header from '../components/Header';
 import DaySelector from '../components/DaySelector';
 import { supabase } from '../lib/supabaseClient';
 import 'react-calendar/dist/Calendar.css';
 import Calendar from 'react-calendar';
+import * as XLSX from 'xlsx';
 // ---------- helpers ----------
 import { differenceInCalendarDays, addDays, isWithinInterval } from "date-fns";
 
@@ -116,6 +116,7 @@ export default function RosterPage() {
   const [currentRosterId, setCurrentRosterId] = useState<string>('');
   const [originalEmployees, setOriginalEmployees] = useState<Employee[]>([]);
   const [schedulableDays, setSchedulableDays] = useState<DayOfWeek[]>(DAYS_OF_WEEK);
+  const [maxConsecutiveDays, setMaxConsecutiveDays] = useState<number>(2); // Default to 2
 
   const inRangeSet = useMemo(() => {
     if (!startDate || !endDate) { // startDate and endDate are "YYYY-MM-DD"
@@ -620,7 +621,7 @@ export default function RosterPage() {
       const res = await fetch('/api/generateSchedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employees: employeeData, dates }),
+        body: JSON.stringify({ employees: employeeData, dates, max_consecutive_days: maxConsecutiveDays }),
       });
 
       if (!res.ok) {
@@ -676,9 +677,91 @@ export default function RosterPage() {
     return d >= s && d <= e;
   }
 
+  const handleExportToExcel = () => {
+    if (!schedule || schedule.length === 0 || !employees || employees.length === 0) {
+      alert("No schedule or employee data available to export.");
+      return;
+    }
+
+    // 1. Main Schedule Data
+    const scheduleSheetData = schedule.map(item => ({
+      'Date': item.date,
+      'Day of Week': DAYS_OF_WEEK[item.weekday],
+      'Employee Name': item.employee,
+    }));
+
+    // 2. Roster/Preferences Table Data
+    // Assuming preferences are ranked, up to 7 choices
+    const rosterSheetData = employees.map(emp => {
+      const row: { [key: string]: string } = { 'Employee Name': emp.name };
+      emp.preferences.forEach((pref, index) => {
+        row[`Preference ${index + 1}`] = pref || 'N/A';
+      });
+      return row;
+    });
+
+    // 3. Summary Table Data
+    // Headers for summary table - adjust if needed based on scheduleSummaryData structure
+    const summarySheetData = scheduleSummaryData.map(row => ({
+      'Employee Name': row.employeeName,
+      'Pref 1 Count': row.prefCounts[0],
+      'Pref 2 Count': row.prefCounts[1],
+      'Pref 3 Count': row.prefCounts[2],
+      'Pref 4 Count': row.prefCounts[3],
+      'Pref 5 Count': row.prefCounts[4],
+      'Pref 6 Count': row.prefCounts[5],
+      'Pref 7 Count': row.prefCounts[6],
+      'No Preference Count': row.noPreferenceCount,
+      'Total Days Assigned': row.totalDaysAssigned,
+    }));
+
+
+    const wb = XLSX.utils.book_new();
+    const scheduleWS = XLSX.utils.json_to_sheet(scheduleSheetData);
+    const rosterWS = XLSX.utils.json_to_sheet(rosterSheetData);
+    const summaryWS = XLSX.utils.json_to_sheet(summarySheetData);
+
+    XLSX.utils.book_append_sheet(wb, scheduleWS, "Schedule");
+    XLSX.utils.book_append_sheet(wb, rosterWS, "Roster Preferences");
+    XLSX.utils.book_append_sheet(wb, summaryWS, "Summary");
+
+    // 4. Individual Employee Sheets
+    if (employees && schedule) {
+      employees.forEach(employee => {
+        if (employee.name) { // Ensure employee has a name for the sheet
+          const employeeAssignments = schedule.filter(item => item.employee === employee.name);
+          if (employeeAssignments.length > 0) {
+            const employeeSheetData = employeeAssignments.map(item => ({
+              'Date': item.date,
+              'Day of Week': DAYS_OF_WEEK[item.weekday],
+            }));
+            const employeeWS = XLSX.utils.json_to_sheet(employeeSheetData);
+            
+            // Sanitize employee name for sheet name (max 31 chars, remove invalid chars)
+            let safeSheetName = employee.name.replace(/[\[\]\*\?\/\\:]/g, "").substring(0, 31);
+            // Ensure unique sheet names if sanitization causes collisions (simple counter for now)
+            let originalSafeSheetName = safeSheetName;
+            let counter = 1;
+            while (wb.SheetNames.includes(safeSheetName)) {
+              safeSheetName = `${originalSafeSheetName.substring(0, 31 - String(counter).length - 1 )}_${counter}`;
+              counter++;
+            }
+
+            XLSX.utils.book_append_sheet(wb, employeeWS, safeSheetName);
+          }
+        }
+      });
+    }
+
+    // Generate a filename based on the date range or a default
+    const fileName = (startDate && endDate) 
+      ? `Schedule_Export_${startDate}_to_${endDate}.xlsx` 
+      : "Schedule_Export.xlsx";
+    XLSX.writeFile(wb, fileName);
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
-      <Header />
       <main className="container mx-auto p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto">
           <div style={{
@@ -857,29 +940,46 @@ export default function RosterPage() {
                 {/* Sidebar: Date Inputs and Exclude Dates */}
                 <div className="w-full md:max-w-sm flex flex-col gap-6">
                   <div className="space-y-4 p-4 bg-white shadow rounded-lg">
-                    <h2 className="text-lg font-semibold text-gray-700">Set Date Range</h2>
-                    <div>
-                      <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">Start Date:</label>
-                      <input
-                        type="date"
-                        id="startDate"
-                        value={startDate}
-                        onChange={handleStartDateChange}
-                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">End Date:</label>
-                      <input
-                        type="date"
-                        id="endDate"
-                        value={endDate}
-                        onChange={handleEndDateChange}
-                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                      />
-                    </div>
-                    {dateError && <p className="text-sm text-red-500">{dateError}</p>}
+                  <h2 className="text-lg font-semibold text-gray-700">Set Date Range</h2>
+                  <div>
+                    <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">Start Date:</label>
+                    <input
+                      type="date"
+                      id="startDate"
+                      value={startDate}
+                      onChange={handleStartDateChange}
+                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    />
                   </div>
+                  <div>
+                    <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">End Date:</label>
+                    <input
+                      type="date"
+                      id="endDate"
+                      value={endDate}
+                      min={startDate || undefined}
+                      onChange={handleEndDateChange}
+                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    />
+                  </div>
+                  {/* Max Consecutive Days Slider START */}
+                  <div className="mt-4">
+                    <label htmlFor="maxConsecutiveDaysSlider" className="block text-sm font-medium text-gray-700">
+                      Most Consecutive Days Allowed: <span className="font-semibold text-psu-blue">{maxConsecutiveDays}</span>
+                    </label>
+                    <input
+                      type="range"
+                      id="maxConsecutiveDaysSlider"
+                      min="1"
+                      max="7" // Or a different reasonable upper limit, e.g., 14
+                      value={maxConsecutiveDays}
+                      onChange={(e) => setMaxConsecutiveDays(parseInt(e.target.value, 10))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-1 accent-psu-blue"
+                    />
+                  </div>
+                  {/* Max Consecutive Days Slider END */}
+                  {dateError && <p className="text-sm text-red-500">{dateError}</p>}
+                </div>
                   <div className="space-y-4 p-4 bg-white shadow rounded-lg">
                     <h2 className="text-lg font-semibold text-gray-700">Exclude Dates</h2>
                     <div className="space-y-4">
@@ -917,11 +1017,11 @@ export default function RosterPage() {
                               </div>
                               <button
                                 onClick={() => setExcludedDates(excludedDates.filter(e => e.id !== entry.id))}
-                                className="text-red-500 hover:text-red-700"
+                                className="bg-psu-blue text-white px-2 py-1 rounded font-semibold"
                                 title="Remove exclusion"
                               >
                                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                  <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                               </button>
                             </div>
@@ -945,6 +1045,7 @@ export default function RosterPage() {
                                   <input
                                     type="date"
                                     value={entry.endDate || ''}
+                                    min={entry.startDate || undefined}
                                     onChange={(e) => {
                                       setExcludedDates(excludedDates.map(ex => 
                                         ex.id === entry.id ? { ...ex, endDate: e.target.value } : ex
@@ -992,28 +1093,28 @@ export default function RosterPage() {
                 {/* Calendar and Generate Schedule */}
                 <div className="flex-1 flex flex-col">
                   <div className="p-4 bg-white shadow rounded-lg h-full">
-                    <Calendar
-                      onChange={(value: Value) => {
-                        if (Array.isArray(value)) {
-                          // Range selection, not actively used for single date picking in this setup
-                        } else if (value) {
-                          // Single date selection if needed, or just use for navigation
-                          // setActiveStartDate(value);
-                        }
-                      }}
-                      activeStartDate={activeStartDate}
-                      onActiveStartDateChange={({ activeStartDate }) => activeStartDate && setActiveStartDate(activeStartDate)}
-                      value={null} 
-                      selectRange={false}
+                  <Calendar
+                    onChange={(value: Value) => {
+                      if (Array.isArray(value)) {
+                        // Range selection, not actively used for single date picking in this setup
+                      } else if (value) {
+                        // Single date selection if needed, or just use for navigation
+                        // setActiveStartDate(value);
+                      }
+                    }}
+                    activeStartDate={activeStartDate}
+                    onActiveStartDateChange={({ activeStartDate }) => activeStartDate && setActiveStartDate(activeStartDate)}
+                    value={null} 
+                    selectRange={false}
                       locale="en-US"
-                      tileContent={({ date, view }) => {
-                        if (view === 'month') {
+                    tileContent={({ date, view }) => {
+                      if (view === 'month') {
                           const day = date.getDate();
-                          const dateStr = date.toISOString().slice(0, 10);
-                          const employeeName = scheduleMap[dateStr];
-                          const dayName = getDayName(date);
-                          const isSchedulableDayOfWeek = schedulableDays.includes(dayName);
-                          const isInRange = inRangeSet.has(date.toDateString());
+                        const dateStr = date.toISOString().slice(0, 10);
+                        const employeeName = scheduleMap[dateStr];
+                        const dayName = getDayName(date);
+                        const isSchedulableDayOfWeek = schedulableDays.includes(dayName);
+                        const isInRange = inRangeSet.has(date.toDateString());
                           const excludedDatesSet = getExcludedDatesSet(excludedDates);
                           const isExcluded = excludedDatesSet.has(date.toDateString());
 
@@ -1032,7 +1133,7 @@ export default function RosterPage() {
                             }
                           }
 
-                          let employeeBadgeContent = null;
+                        let employeeBadgeContent = null;
                           if (isExcluded && exclusionTitle) {
                             employeeBadgeContent = (
                               <p
@@ -1044,16 +1145,16 @@ export default function RosterPage() {
                               </p>
                             );
                           } else if (isInRange && isSchedulableDayOfWeek && employeeName && !isExcluded) {
-                            employeeBadgeContent = (
-                              <p 
-                                className="text-xs text-white p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
-                                style={{ fontSize: '0.65rem' }}
-                                title={employeeName}
-                              >
-                                {employeeName}
-                              </p>
-                            );
-                          }
+                          employeeBadgeContent = (
+                            <p 
+                              className="text-xs text-white p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
+                              style={{ fontSize: '0.65rem' }}
+                              title={employeeName}
+                            >
+                              {employeeName}
+                            </p>
+                          );
+                        }
 
                           const dayNumberComponent = (
                             <span 
@@ -1064,32 +1165,32 @@ export default function RosterPage() {
                             </span>
                           );
 
-                          return (
-                            <div className="flex flex-col items-center justify-start h-full pt-1">
-                              {dayNumberComponent}
-                              {employeeBadgeContent}
-                            </div>
-                          );
+                        return (
+                          <div className="flex flex-col items-center justify-start h-full pt-1">
+                            {dayNumberComponent}
+                            {employeeBadgeContent}
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                    tileDisabled={({ date, view }) => {
+                        if (view === 'month') {
+                            const dateString = date.toDateString();
+                            const dayName = getDayName(date);
+                            // Disable if not in the selected date range OR if its day of the week is not schedulable
+                            if (!inRangeSet.has(dateString) || !schedulableDays.includes(dayName)) {
+                                return true;
+                            }
+                            return false; // Otherwise, it's enabled
                         }
-                        return null;
-                      }}
-                      tileDisabled={({ date, view }) => {
-                          if (view === 'month') {
-                              const dateString = date.toDateString();
-                              const dayName = getDayName(date);
-                              // Disable if not in the selected date range OR if its day of the week is not schedulable
-                              if (!inRangeSet.has(dateString) || !schedulableDays.includes(dayName)) {
-                                  return true;
-                              }
-                              return false; // Otherwise, it's enabled
-                          }
-                          return false;
-                      }}
-                      tileClassName={({ date, view }) => {
-                        if (view !== 'month') return undefined;
+                        return false;
+                    }}
+                    tileClassName={({ date, view }) => {
+                      if (view !== 'month') return undefined;
 
-                        const dateString = date.toDateString();
-                        const dayName = getDayName(date);
+                      const dateString = date.toDateString();
+                      const dayName = getDayName(date);
                         const excludedDatesSet = getExcludedDatesSet(excludedDates);
 
                         // If the date is excluded, return a special class
@@ -1097,26 +1198,36 @@ export default function RosterPage() {
                           return 'excluded-date';
                         }
 
-                        // Apply 'range-day' style only if the date is in the selected range AND its day of the week is schedulable
-                        if (inRangeSet.has(dateString) && schedulableDays.includes(dayName)) {
-                          return 'range-day';
-                        }
+                      // Apply 'range-day' style only if the date is in the selected range AND its day of the week is schedulable
+                      if (inRangeSet.has(dateString) && schedulableDays.includes(dayName)) {
+                        return 'range-day';
+                      }
 
-                        return undefined;
-                      }}
-                      className="react-calendar-override"
-                    />
+                      return undefined;
+                    }}
+                    className="react-calendar-override"
+                  />
+                </div>
+                  <div className="mt-4 space-y-2">
+                    <div className="flex justify-end space-x-2">
+                      <button
+                        className="rounded bg-primary-blue px-4 py-2 text-white hover:opacity-90 disabled:opacity-50"
+                        onClick={handleGenerateSchedule}
+                        disabled={loading}
+                      >
+                        {loading ? 'Generating…' : 'Generate Schedule'}
+                      </button>
+                      {schedule && schedule.length > 0 && (
+                        <button
+                          className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
+                          onClick={handleExportToExcel}
+                          disabled={!schedule || schedule.length === 0}
+                        >
+                          Export to Excel
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex justify-end mt-4">
-                    <button
-                      className="rounded bg-primary-blue px-4 py-2 text-white hover:opacity-90 disabled:opacity-50"
-                      onClick={handleGenerateSchedule}
-                      disabled={loading}
-                    >
-                      {loading ? 'Generating…' : 'Generate Schedule'}
-                    </button>
-                  </div>
-                  {error && <p className="mt-2 text-red-600">{error}</p>}
                 </div>
               </div>
 
