@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import DaySelector from '../components/DaySelector';
 import { supabase } from '../lib/supabaseClient';
 import 'react-calendar/dist/Calendar.css';
@@ -140,6 +140,7 @@ export default function RosterPage() {
   const [dateSettings, setDateSettings] = useState<DateSetting[]>([]);
   const [newSettingName, setNewSettingName] = useState('');
   const [selectedSettingId, setSelectedSettingId] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const inRangeSet = useMemo(() => {
     if (!startDate || !endDate) { // startDate and endDate are "YYYY-MM-DD"
@@ -1012,6 +1013,104 @@ export default function RosterPage() {
     }
   }, [schedulableDays]);
 
+  const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    console.log('CSV import started, file:', file.name);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      console.log('CSV file read, content:', text);
+      
+      const rows = text.split('\n').map(row => row.split(',').map(cell => cell.trim()));
+      console.log('Parsed rows:', rows);
+      
+      // Validate headers
+      const headers = rows[0];
+      const expectedHeaders = ['Employee Name', '1st Pref', '2nd Pref', '3rd Pref', '4th Pref', '5th Pref', '6th Pref', '7th Pref'];
+      console.log('Headers found:', headers);
+      console.log('Expected headers:', expectedHeaders);
+      
+      if (!headers.every((header, i) => header === expectedHeaders[i])) {
+        console.log('Header validation failed');
+        setFeedbackMessage({ 
+          type: 'error', 
+          message: 'Invalid CSV format. Please use the provided template.' 
+        });
+        event.target.value = "";
+        return;
+      }
+
+      // Process employee data
+      const newEmployees = rows.slice(1)
+        .filter(row => row[0] && row[0].trim() !== '') // Skip empty rows
+        .map(row => {
+          // Create preferences array with proper length (7 elements)
+          const preferences = row.slice(1, 8).map(pref => pref as DayOfWeek);
+          // Ensure preferences array has exactly 7 elements
+          while (preferences.length < 7) {
+            preferences.push('');
+          }
+          return {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            name: row[0],
+            preferences: preferences
+          };
+        });
+
+      console.log('Processed employees:', newEmployees);
+
+      if (newEmployees.length === 0) {
+        console.log('No valid employees found');
+        setFeedbackMessage({ 
+          type: 'error', 
+          message: 'No valid employee data found in CSV.' 
+        });
+        event.target.value = "";
+        return;
+      }
+
+      console.log('Setting employees state with:', newEmployees);
+      setEmployees(newEmployees);
+      setCurrentRosterName('Unsaved Roster');
+      setCurrentRosterId('');
+      setOriginalEmployees([]);
+      setSelectedRosterId('');
+      setFeedbackMessage({ 
+        type: 'success', 
+        message: `Successfully imported ${newEmployees.length} employees.` 
+      });
+      event.target.value = "";
+    };
+    reader.readAsText(file);
+  };
+
+  const downloadTemplate = () => {
+    const headers = ['Employee Name', '1st Pref', '2nd Pref', '3rd Pref', '4th Pref', '5th Pref', '6th Pref', '7th Pref'];
+    const exampleRow = ['John Doe', 'Monday', 'Wednesday', 'Friday', 'Tuesday', 'Thursday', 'Saturday', 'Sunday'];
+    const csvContent = [headers, exampleRow].map(row => row.join(',')).join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'employee_preferences_template.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
+
+  // Automatically clear feedbackMessage after 3 seconds
+  useEffect(() => {
+    if (feedbackMessage) {
+      const timeout = setTimeout(() => setFeedbackMessage(null), 3000);
+      return () => clearTimeout(timeout);
+    }
+  }, [feedbackMessage]);
+
   return (
     <div className="min-h-screen bg-gray-100">
       <main className="container mx-auto p-4 sm:p-6 lg:p-8">
@@ -1021,43 +1120,63 @@ export default function RosterPage() {
             <h1 className="text-2xl font-bold mb-6">Roster Management</h1>
             {/* Roster Management Menu */}
             <div className="mb-8 bg-white rounded-lg shadow p-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-4 flex-1">
-                  <div className="flex-1">
-                    <select
-                      id="loadRoster"
-                      value={selectedRosterId}
-                      onChange={(e) => handleLoadRoster(e.target.value)}
-                      className="w-full"
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex-1 min-w-[220px]">
+                  <select
+                    id="loadRoster"
+                    value={selectedRosterId}
+                    onChange={(e) => handleLoadRoster(e.target.value)}
+                    className="w-full"
+                  >
+                    <option value="">Load Saved Roster</option>
+                    {savedRosters.map(roster => (
+                      <option key={roster.id} value={roster.id}>
+                        {roster.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1 min-w-[220px]">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      id="rosterName"
+                      value={newRosterName}
+                      onChange={(e) => setNewRosterName(e.target.value)}
+                      placeholder="Save Current Roster As..."
+                      className="flex-1"
+                    />
+                    <button
+                      onClick={handleSaveRoster}
+                      disabled={!newRosterName.trim()}
+                      className="bg-gray-400 text-white px-4 py-2 rounded font-semibold disabled:opacity-60"
                     >
-                      <option value="">Load Saved Roster</option>
-                      {savedRosters.map(roster => (
-                        <option key={roster.id} value={roster.id}>
-                          {roster.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        id="rosterName"
-                        value={newRosterName}
-                        onChange={(e) => setNewRosterName(e.target.value)}
-                        placeholder="Save Current Roster As..."
-                        className="flex-1"
-                      />
-                      <button
-                        onClick={handleSaveRoster}
-                        disabled={!newRosterName.trim()}
-                        className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                      >
-                        Save
-                      </button>
-                    </div>
+                      Save
+                    </button>
                   </div>
                 </div>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  Import CSV
+                </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleImportCSV}
+                  accept=".csv"
+                  className="hidden"
+                />
+                <a
+                  href="#"
+                  onClick={e => { e.preventDefault(); downloadTemplate(); }}
+                  className="text-sm text-psu-blue hover:underline focus:underline outline-none bg-transparent border-none p-0 m-0 shadow-none"
+                  style={{ background: 'none', border: 'none', padding: 0, margin: 0, boxShadow: 'none', borderRadius: 0, display: 'inline', fontWeight: 400, whiteSpace: 'nowrap' }}
+                >
+                  Download CSV Template
+                </a>
               </div>
               {feedbackMessage && (
                 <div className={`${feedbackMessage.type === 'success' ? 'feedback-success' : 'feedback-error'} mt-4`}>
@@ -1630,7 +1749,7 @@ export default function RosterPage() {
                       <tr key={row.employeeName + index} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
                         <td className="px-4 py-3 border-b border-gray-200 whitespace-nowrap text-sm font-medium text-gray-900">{row.employeeName}</td>
                           {row.prefCounts.map((count, i) => (
-                            <td key={i} className={`px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-center ${count === "not selected" ? "text-gray-400" : "text-gray-800"}`}>
+                            <td key={i} className={`px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800`}>
                               {count}
                             </td>
                           ))}
