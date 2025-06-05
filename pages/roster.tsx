@@ -1027,17 +1027,19 @@ export default function RosterPage() {
       const rows = text.split('\n').map(row => row.split(',').map(cell => cell.trim()));
       console.log('Parsed rows:', rows);
       
-      // Validate headers
+      // Validate headers - now dynamic based on schedulable days
       const headers = rows[0];
-      const expectedHeaders = ['Employee Name', '1st Pref', '2nd Pref', '3rd Pref', '4th Pref', '5th Pref', '6th Pref', '7th Pref'];
+      const expectedHeaders = ['Employee Name', ...schedulableDays.map((_, index) => 
+        `${index + 1}${getOrdinalSuffix(index + 1)} Pref`
+      )];
       console.log('Headers found:', headers);
       console.log('Expected headers:', expectedHeaders);
       
-      if (!headers.every((header, i) => header === expectedHeaders[i])) {
+      if (headers.length !== expectedHeaders.length || !headers.every((header, i) => header === expectedHeaders[i])) {
         console.log('Header validation failed');
         setFeedbackMessage({ 
           type: 'error', 
-          message: 'Invalid CSV format. Please use the provided template.' 
+          message: `Invalid CSV format. Expected ${schedulableDays.length} preference columns for currently selected days (${schedulableDays.join(', ')}). Please download the current template.` 
         });
         event.target.value = "";
         return;
@@ -1047,9 +1049,9 @@ export default function RosterPage() {
       const newEmployees = rows.slice(1)
         .filter(row => row[0] && row[0].trim() !== '') // Skip empty rows
         .map(row => {
-          // Create preferences array with proper length (7 elements)
-          const preferences = row.slice(1, 8).map(pref => pref as DayOfWeek);
-          // Ensure preferences array has exactly 7 elements
+          // Create preferences array with proper length (match schedulable days)
+          const preferences = row.slice(1, schedulableDays.length + 1).map(pref => pref as DayOfWeek);
+          // Ensure preferences array has exactly 7 elements, padding the rest with empty strings
           while (preferences.length < 7) {
             preferences.push('');
           }
@@ -1088,15 +1090,23 @@ export default function RosterPage() {
   };
 
   const downloadTemplate = () => {
-    const headers = ['Employee Name', '1st Pref', '2nd Pref', '3rd Pref', '4th Pref', '5th Pref', '6th Pref', '7th Pref'];
-    const exampleRow = ['John Doe', 'Monday', 'Wednesday', 'Friday', 'Tuesday', 'Thursday', 'Saturday', 'Sunday'];
+    // Create dynamic headers based on schedulable days
+    const preferenceHeaders = schedulableDays.map((_, index) => 
+      `${index + 1}${getOrdinalSuffix(index + 1)} Pref`
+    );
+    const headers = ['Employee Name', ...preferenceHeaders];
+    
+    // Create example row with actual schedulable days
+    const examplePrefs = schedulableDays.slice(); // Use all schedulable days as examples
+    const exampleRow = ['John Doe', ...examplePrefs];
+    
     const csvContent = [headers, exampleRow].map(row => row.join(',')).join('\n');
     
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'employee_preferences_template.csv';
+    a.download = `employee_preferences_template_${schedulableDays.length}days.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1181,6 +1191,12 @@ export default function RosterPage() {
               {feedbackMessage && (
                 <div className={`${feedbackMessage.type === 'success' ? 'feedback-success' : 'feedback-error'} mt-4`}>
                   {feedbackMessage.message}
+                </div>
+              )}
+              {schedulableDays.length < 7 && (
+                <div className="mt-2 text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-md p-3">
+                  <strong>Note:</strong> Currently only scheduling for: <span className="font-medium text-blue-800">{schedulableDays.join(', ')}</span>. 
+                  The CSV template will only include {schedulableDays.length} preference column{schedulableDays.length !== 1 ? 's' : ''} for these days.
                 </div>
               )}
             </div>
@@ -1271,7 +1287,7 @@ export default function RosterPage() {
                               value={employee.preferences[index] || ''}
                               onChange={e => handlePreferenceChange(employee.id, index, e.target.value as DayOfWeek)}
                               className={`mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md ${
-                                employee.preferences[index] 
+                                employee.preferences[index] && schedulableDays.includes(employee.preferences[index])
                                   ? 'bg-green-50 border-green-300 text-green-700' 
                                   : 'bg-gray-50 border-gray-300 text-gray-700'
                               }`}
