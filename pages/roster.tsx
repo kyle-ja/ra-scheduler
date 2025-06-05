@@ -120,6 +120,15 @@ const DAY_ABBREVIATIONS: { [key in DayOfWeek]: string } = {
   '': '',
 };
 
+// Add this new interface for preference sessions in the roster context
+interface PreferenceSessionForRoster {
+  id: string;
+  name: string;
+  schedulable_days: DayOfWeek[];
+  created_at: string;
+  response_count?: number;
+}
+
 export default function RosterPage() {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
@@ -141,6 +150,9 @@ export default function RosterPage() {
   const [newSettingName, setNewSettingName] = useState('');
   const [selectedSettingId, setSelectedSettingId] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Add new state for preference sessions
+  const [preferenceSessions, setPreferenceSessions] = useState<PreferenceSessionForRoster[]>([]);
 
   const inRangeSet = useMemo(() => {
     if (!startDate || !endDate) { // startDate and endDate are "YYYY-MM-DD"
@@ -293,15 +305,40 @@ export default function RosterPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         setUserId(session.user.id);
-        const { data: rosters, error } = await supabase
+        
+        // Load saved rosters
+        const { data: rosters, error: rosterError } = await supabase
           .from('rosters')
           .select('*')
           .eq('user_id', session.user.id);
 
-        if (error) {
-          console.error('Error loading rosters:', error);
+        if (rosterError) {
+          console.error('Error loading rosters:', rosterError);
         } else {
           setSavedRosters(rosters || []);
+        }
+
+        // Load preference sessions with response counts
+        const { data: sessions, error: sessionError } = await supabase
+          .from('preference_sessions')
+          .select(`
+            id,
+            name,
+            schedulable_days,
+            created_at,
+            employee_responses(count)
+          `)
+          .eq('manager_id', session.user.id)
+          .order('created_at', { ascending: false });
+
+        if (sessionError) {
+          console.error('Error loading preference sessions:', sessionError);
+        } else {
+          const sessionsWithCounts = sessions?.map(session => ({
+            ...session,
+            response_count: session.employee_responses?.[0]?.count || 0
+          })) || [];
+          setPreferenceSessions(sessionsWithCounts);
         }
       }
     };
@@ -1136,6 +1173,50 @@ export default function RosterPage() {
     }
   }, [feedbackMessage]);
 
+  // Add new function to load preference session responses
+  const handleLoadPreferenceSession = async (sessionId: string) => {
+    try {
+      // Get session details
+      const selectedSession = preferenceSessions.find(session => session.id === sessionId);
+      if (!selectedSession) return;
+
+      // Fetch all responses for this session
+      const { data: responses, error } = await supabase
+        .from('employee_responses')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('submitted_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Convert responses to Employee format
+      const employeesFromResponses: Employee[] = responses.map(response => ({
+        id: response.id,
+        name: response.employee_name,
+        preferences: response.preferences.concat(Array(7 - response.preferences.length).fill(''))
+      }));
+
+      // Load into state
+      setEmployees(employeesFromResponses);
+      setOriginalEmployees(employeesFromResponses);
+      setSelectedRosterId(''); // Clear selected roster
+      setCurrentRosterName(`${selectedSession.name} (${responses.length} responses)`);
+      setCurrentRosterId(''); // This is from a session, not a saved roster
+      setSchedulableDays(selectedSession.schedulable_days);
+      setSchedule(null);
+      
+      setFeedbackMessage({ 
+        type: 'success', 
+        message: `Loaded ${responses.length} employee responses from preference session` 
+      });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+
+    } catch (error) {
+      console.error('Error loading preference session:', error);
+      setFeedbackMessage({ type: 'error', message: 'Failed to load preference session responses' });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
       <main className="container mx-auto p-4 sm:p-6 lg:p-8">
@@ -1150,20 +1231,51 @@ export default function RosterPage() {
               <div className="flex flex-wrap gap-3 mb-4">
                 <select
                   value={selectedRosterId}
-                  onChange={e => setSelectedRosterId(e.target.value)}
+                  onChange={e => {
+                    const value = e.target.value;
+                    setSelectedRosterId(value);
+                    
+                    // Check if it's a preference session (starts with 'session_')
+                    if (value.startsWith('session_')) {
+                      const sessionId = value.replace('session_', '');
+                      handleLoadPreferenceSession(sessionId);
+                    }
+                  }}
                   className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue"
                 >
-                  <option value="">Load Saved Roster</option>
-                  {savedRosters.map(roster => (
-                    <option key={roster.id} value={roster.id}>{roster.name}</option>
-                  ))}
+                  <option value="">Load Saved Roster or Preference Responses</option>
+                  
+                  {/* Saved Rosters */}
+                  {savedRosters.length > 0 && (
+                    <optgroup label="📁 Saved Rosters">
+                      {savedRosters.map(roster => (
+                        <option key={roster.id} value={roster.id}>
+                          {roster.name} ({roster.employees.length} employees)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  
+                  {/* Preference Sessions */}
+                  {preferenceSessions.length > 0 && (
+                    <optgroup label="📋 Preference Collection Sessions">
+                      {preferenceSessions
+                        .filter(session => (session.response_count || 0) > 0)
+                        .map(session => (
+                          <option key={`session_${session.id}`} value={`session_${session.id}`}>
+                            {session.name} ({session.response_count} responses)
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
                 </select>
-                {selectedRosterId && (
+                
+                {selectedRosterId && !selectedRosterId.startsWith('session_') && (
                   <button
                     onClick={() => handleLoadRoster(selectedRosterId)}
                     className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
                   >
-                    Load
+                    Load Roster
                   </button>
                 )}
                 

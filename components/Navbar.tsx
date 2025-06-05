@@ -30,6 +30,11 @@ export default function Navbar() {
     router.push('/login');
   };
 
+  // Hide navbar completely for preference form pages
+  if (router.pathname.startsWith('/preference-form/')) {
+    return null;
+  }
+
   // Dynamic rendering based on route
   if (router.pathname === '/login') {
     return (

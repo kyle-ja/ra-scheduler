@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import DaySelector from '../components/DaySelector';
 
 type DayOfWeek = 'Sunday' | 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | '';
 
@@ -31,8 +32,11 @@ export default function PreferenceSessionsPage() {
   const [loading, setLoading] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [userId, setUserId] = useState<string>('');
-  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
-  const [responses, setResponses] = useState<EmployeeResponse[]>([]);
+  
+  // Change these to track expanded responses per session
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+  const [sessionResponses, setSessionResponses] = useState<{ [sessionId: string]: EmployeeResponse[] }>({});
+  const [loadingResponses, setLoadingResponses] = useState<string | null>(null);
 
   useEffect(() => {
     const loadUserAndSessions = async () => {
@@ -122,19 +126,71 @@ export default function PreferenceSessionsPage() {
     }
   };
 
-  const fetchResponses = async (sessionId: string) => {
+  const toggleResponses = async (sessionId: string) => {
+    // If this session is already expanded, collapse it
+    if (expandedSessionId === sessionId) {
+      setExpandedSessionId(null);
+      return;
+    }
+
+    // If we haven't loaded responses for this session yet, load them
+    if (!sessionResponses[sessionId]) {
+      setLoadingResponses(sessionId);
+      try {
+        const { data, error } = await supabase
+          .from('employee_responses')
+          .select('*')
+          .eq('session_id', sessionId)
+          .order('submitted_at', { ascending: false });
+
+        if (error) throw error;
+        
+        setSessionResponses(prev => ({
+          ...prev,
+          [sessionId]: data || []
+        }));
+      } catch (error) {
+        console.error('Error fetching responses:', error);
+        setFeedbackMessage({ type: 'error', message: 'Failed to load responses' });
+      } finally {
+        setLoadingResponses(null);
+      }
+    }
+
+    setExpandedSessionId(sessionId);
+  };
+
+  const handleDeleteSession = async (sessionId: string, sessionName: string) => {
+    if (!confirm(`Are you sure you want to delete the session "${sessionName}"? This will also delete all employee responses.`)) {
+      return;
+    }
+
     try {
-      const { data, error } = await supabase
-        .from('employee_responses')
-        .select('*')
-        .eq('session_id', sessionId)
-        .order('submitted_at', { ascending: false });
+      const { error } = await supabase
+        .from('preference_sessions')
+        .delete()
+        .eq('id', sessionId)
+        .eq('manager_id', userId);
 
       if (error) throw error;
-      setResponses(data || []);
-      setSelectedSessionId(sessionId);
+
+      // Remove from local state
+      setSessions(sessions.filter(s => s.id !== sessionId));
+      
+      // Clean up expanded state if this session was expanded
+      if (expandedSessionId === sessionId) {
+        setExpandedSessionId(null);
+      }
+      
+      // Remove cached responses
+      const { [sessionId]: removed, ...rest } = sessionResponses;
+      setSessionResponses(rest);
+
+      setFeedbackMessage({ type: 'success', message: 'Session deleted successfully!' });
+      setTimeout(() => setFeedbackMessage(null), 3000);
     } catch (error) {
-      console.error('Error fetching responses:', error);
+      console.error('Error deleting session:', error);
+      setFeedbackMessage({ type: 'error', message: 'Failed to delete session' });
     }
   };
 
@@ -151,17 +207,19 @@ export default function PreferenceSessionsPage() {
   return (
     <div className="min-h-screen bg-gray-100">
       <main className="container mx-auto p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Employee Preference Collection</h1>
-            <p className="mt-2 text-gray-600">Create forms to collect employee schedule preferences</p>
+        <div className="max-w-7xl mx-auto flex flex-col gap-8">
+          
+          {/* Page Header */}
+          <div className="bg-white rounded-2xl shadow p-8 border border-gray-200">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Employee Preference Collection</h1>
+            <p className="text-gray-600">Create forms to collect employee schedule preferences</p>
           </div>
 
           {/* Create New Session */}
-          <div className="bg-white rounded-lg shadow p-6 mb-8">
-            <h2 className="text-xl font-semibold mb-4">Create New Collection Session</h2>
+          <div className="bg-white rounded-2xl shadow p-8 border border-gray-200">
+            <h2 className="text-2xl font-bold mb-6">Create New Collection Session</h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Session Name
@@ -171,7 +229,7 @@ export default function PreferenceSessionsPage() {
                   value={newSessionName}
                   onChange={e => setNewSessionName(e.target.value)}
                   placeholder="e.g., March 2024 Schedule Preferences"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue"
                 />
               </div>
               
@@ -183,40 +241,19 @@ export default function PreferenceSessionsPage() {
                   type="date"
                   value={expiryDate}
                   onChange={e => setExpiryDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue"
                 />
               </div>
             </div>
 
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Days to Include
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {DAYS_OF_WEEK.map(day => (
-                  <label key={day} className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={selectedDays.includes(day)}
-                      onChange={e => {
-                        if (e.target.checked) {
-                          setSelectedDays([...selectedDays, day]);
-                        } else {
-                          setSelectedDays(selectedDays.filter(d => d !== day));
-                        }
-                      }}
-                      className="mr-2"
-                    />
-                    {day}
-                  </label>
-                ))}
-              </div>
+            <div className="mb-6">
+              <DaySelector selectedDays={selectedDays} onChange={setSelectedDays} />
             </div>
 
             <button
               onClick={handleCreateSession}
               disabled={loading}
-              className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
+              className="bg-psu-blue text-white px-4 py-2 rounded font-semibold hover:bg-blue-700 disabled:opacity-50"
             >
               {loading ? 'Creating...' : 'Create Session'}
             </button>
@@ -229,117 +266,242 @@ export default function PreferenceSessionsPage() {
           </div>
 
           {/* Existing Sessions */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-xl font-semibold">Your Collection Sessions</h2>
+          <div className="bg-white rounded-2xl shadow border border-gray-200 overflow-hidden">
+            <div className="px-8 py-6 border-b border-gray-200">
+              <h2 className="text-2xl font-bold">Your Collection Sessions</h2>
+              {sessions.length > 0 && (
+                <p className="text-sm text-gray-600 mt-1">
+                  {sessions.length} session{sessions.length !== 1 ? 's' : ''} created
+                </p>
+              )}
             </div>
             
             {sessions.length === 0 ? (
-              <div className="p-6 text-center text-gray-500">
-                No sessions created yet. Create your first session above!
+              <div className="p-8 text-center text-gray-500">
+                <div className="text-4xl mb-4">📋</div>
+                <p className="text-lg font-medium">No sessions created yet</p>
+                <p className="text-sm">Create your first session above to start collecting employee preferences!</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Session Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Days</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Responses</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                <table className="min-w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="w-12"></th>
+                      <th scope="col" className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Session Details</th>
+                      <th scope="col" className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Available Days</th>
+                      <th scope="col" className="px-6 py-4 text-center text-sm font-semibold text-gray-900">Responses</th>
+                      <th scope="col" className="px-6 py-4 text-center text-sm font-semibold text-gray-900">Status</th>
+                      <th scope="col" className="px-6 py-4 text-center text-sm font-semibold text-gray-900">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {sessions.map(session => (
-                      <tr key={session.id}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">{session.name}</div>
-                            <div className="text-sm text-gray-500">
-                              Created {new Date(session.created_at).toLocaleDateString()}
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {sessions.map((session, index) => (
+                      <>
+                        <tr key={session.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-3 py-4 text-center">
+                            <button
+                              onClick={() => handleDeleteSession(session.id, session.name)}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                              title="Delete session"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </button>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div>
+                              <div className="text-sm font-semibold text-gray-900">{session.name}</div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                Created {new Date(session.created_at).toLocaleDateString()}
+                                {session.expires_at && (
+                                  <span> • Expires {new Date(session.expires_at).toLocaleDateString()}</span>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {session.schedulable_days.join(', ')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {session.response_count || 0} responses
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                            session.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}>
-                            {session.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                          <button
-                            onClick={() => copyToClipboard(generateShareableLink(session.id))}
-                            className="text-blue-600 hover:text-blue-900"
-                          >
-                            Copy Link
-                          </button>
-                          <button
-                            onClick={() => fetchResponses(session.id)}
-                            className="text-green-600 hover:text-green-900"
-                          >
-                            View Responses
-                          </button>
-                          <button
-                            onClick={() => toggleSessionStatus(session.id, session.is_active)}
-                            className="text-gray-600 hover:text-gray-900"
-                          >
-                            {session.is_active ? 'Deactivate' : 'Activate'}
-                          </button>
-                        </td>
-                      </tr>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-wrap gap-1">
+                              {session.schedulable_days.map(day => (
+                                <span key={day} className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800">
+                                  {day.substring(0, 3)}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex flex-col items-center">
+                              <span className="text-2xl font-bold text-gray-900">{session.response_count || 0}</span>
+                              <span className="text-xs text-gray-500">response{(session.response_count || 0) !== 1 ? 's' : ''}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                              session.is_active 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              <span className={`w-2 h-2 rounded-full mr-2 ${
+                                session.is_active ? 'bg-green-400' : 'bg-gray-400'
+                              }`}></span>
+                              {session.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex justify-center space-x-2">
+                              <button
+                                onClick={() => copyToClipboard(generateShareableLink(session.id))}
+                                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-psu-blue transition-colors"
+                                title="Copy shareable link"
+                              >
+                                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                Copy Link
+                              </button>
+                              
+                              {(session.response_count || 0) > 0 && (
+                                <button
+                                  onClick={() => toggleResponses(session.id)}
+                                  disabled={loadingResponses === session.id}
+                                  className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 transition-colors"
+                                >
+                                  {loadingResponses === session.id ? (
+                                    <>
+                                      <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                      Loading...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={expandedSessionId === session.id ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
+                                      </svg>
+                                      {expandedSessionId === session.id ? 'Hide' : 'View'} Responses
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                              
+                              <button
+                                onClick={() => toggleSessionStatus(session.id, session.is_active)}
+                                className={`inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white transition-colors ${
+                                  session.is_active 
+                                    ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' 
+                                    : 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
+                                } focus:outline-none focus:ring-2 focus:ring-offset-2`}
+                              >
+                                {session.is_active ? 'Deactivate' : 'Activate'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        
+                        {/* Expandable responses row */}
+                        {expandedSessionId === session.id && sessionResponses[session.id] && (
+                          <tr className="bg-gray-50">
+                            <td colSpan={6} className="px-6 py-6">
+                              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                                <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200 rounded-t-lg">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <h4 className="text-lg font-semibold text-gray-900">Employee Responses</h4>
+                                      <p className="text-sm text-gray-600 mt-1">
+                                        {sessionResponses[session.id].length} response{sessionResponses[session.id].length !== 1 ? 's' : ''} collected
+                                      </p>
+                                    </div>
+                                    <button
+                                      onClick={() => setExpandedSessionId(null)}
+                                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                                    >
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </div>
+                                
+                                {sessionResponses[session.id].length === 0 ? (
+                                  <div className="p-8 text-center text-gray-500">
+                                    <div className="text-3xl mb-2">📝</div>
+                                    <p className="font-medium">No responses yet</p>
+                                    <p className="text-sm">Share the link to start collecting preferences!</p>
+                                  </div>
+                                ) : (
+                                  <div className="overflow-x-auto">
+                                    <table className="min-w-full">
+                                      <thead className="bg-gray-50">
+                                        <tr>
+                                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
+                                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Preferences</th>
+                                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="bg-white divide-y divide-gray-200">
+                                        {sessionResponses[session.id].map((response, responseIndex) => (
+                                          <tr key={response.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-6 py-4">
+                                              <div className="text-sm font-medium text-gray-900">{response.employee_name}</div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                              <div className="text-sm text-gray-500">
+                                                {response.employee_email ? (
+                                                  <a href={`mailto:${response.employee_email}`} className="text-blue-600 hover:text-blue-800">
+                                                    {response.employee_email}
+                                                  </a>
+                                                ) : (
+                                                  <span className="text-gray-400 italic">Not provided</span>
+                                                )}
+                                              </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                              <div className="flex flex-wrap gap-1">
+                                                {response.preferences.filter(p => p).length > 0 ? (
+                                                  response.preferences.filter(p => p).map((pref, i) => (
+                                                    <span key={i} className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
+                                                      i === 0 ? 'bg-green-100 text-green-800' :
+                                                      i === 1 ? 'bg-blue-100 text-blue-800' :
+                                                      i === 2 ? 'bg-purple-100 text-purple-800' :
+                                                      'bg-gray-100 text-gray-800'
+                                                    }`}>
+                                                      {i + 1}. {pref}
+                                                    </span>
+                                                  ))
+                                                ) : (
+                                                  <span className="text-gray-400 italic text-sm">No preferences selected</span>
+                                                )}
+                                              </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-500">
+                                              {new Date(response.submitted_at).toLocaleDateString('en-US', {
+                                                month: 'short',
+                                                day: 'numeric',
+                                                year: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit'
+                                              })}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
           </div>
-
-          {/* Responses View */}
-          {selectedSessionId && responses.length > 0 && (
-            <div className="mt-8 bg-white rounded-lg shadow overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-xl font-semibold">Employee Responses</h2>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Preferences</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Submitted</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {responses.map(response => (
-                      <tr key={response.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {response.employee_name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {response.employee_email || 'Not provided'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {response.preferences.filter(p => p).join(', ') || 'No preferences'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(response.submitted_at).toLocaleDateString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
         </div>
       </main>
     </div>
