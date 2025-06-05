@@ -1075,12 +1075,14 @@ export default function RosterPage() {
                 <h2 className="text-lg font-semibold m-0 mr-16">{currentRosterName}</h2>
               </div>
               <div className="flex gap-x-4 mt-1 mb-8">
-                <button
-                  onClick={handleNewRoster}
-                  className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                >
-                  New Roster
-                </button>
+                {employees.some(emp => emp.name && emp.name.trim() !== '') && (
+                  <button
+                    onClick={handleNewRoster}
+                    className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
+                  >
+                    New Roster
+                  </button>
+                )}
                 {currentRosterId && hasEmployeesChanged() && (
                   <>
                     <button

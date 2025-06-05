@@ -19,10 +19,27 @@ export default function Navbar() {
     }
   }, []);
 
+  const handleLogoutAndGoHome = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    await supabase.auth.signOut();
+    router.push('/');
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
   };
+
+  // Dynamic rendering based on route
+  if (router.pathname === '/login') {
+    return (
+      <nav className="w-full bg-white shadow flex items-center justify-between px-6 py-3">
+        <Link href="/" legacyBehavior>
+          <a className="text-xl font-bold text-psu-blue cursor-pointer">Preference Scheduler</a>
+        </Link>
+      </nav>
+    );
+  }
 
   return (
     <>
@@ -45,11 +62,11 @@ export default function Navbar() {
       )}
       <nav className="w-full bg-white shadow flex items-center justify-between px-6 py-3">
         <div className="flex items-center gap-8">
-          <span className="text-xl font-bold text-psu-blue">Preference Scheduler</span>
+          <a className="text-xl font-bold text-psu-blue cursor-pointer" href="/" onClick={handleLogoutAndGoHome}>Preference Scheduler</a>
           <Link href="/roster" legacyBehavior>
             <a className="text-base font-medium text-gray-700 hover:text-psu-blue transition">Roster Management</a>
           </Link>
-          <Link href="/schedule" legacyBehavior>
+          <Link href="/export" legacyBehavior>
             <a className="text-base font-medium text-gray-700 hover:text-psu-blue transition">Exports</a>
           </Link>
         </div>
