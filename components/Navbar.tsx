@@ -66,6 +66,9 @@ export default function Navbar() {
           <Link href="/roster" legacyBehavior>
             <a className="text-base font-medium text-gray-700 hover:text-psu-blue transition">Roster Management</a>
           </Link>
+          <Link href="/preference-sessions" legacyBehavior>
+            <a className="text-base font-medium text-gray-700 hover:text-psu-blue transition">Preference Collection</a>
+          </Link>
           <Link href="/export" legacyBehavior>
             <a className="text-base font-medium text-gray-700 hover:text-psu-blue transition">Exports</a>
           </Link>

@@ -500,6 +500,10 @@ export default function RosterPage() {
   const handleDeleteRoster = async (rosterId: string) => {
     if (!rosterId || !userId) return;
 
+    // Find the roster name before deleting
+    const rosterToDelete = savedRosters.find(roster => roster.id === rosterId);
+    const rosterName = rosterToDelete?.name || 'Roster';
+
     try {
       const { error } = await supabase
         .from('rosters')
@@ -514,7 +518,7 @@ export default function RosterPage() {
         setSelectedRosterId('');
         setEmployees([]);
       }
-      setFeedbackMessage({ type: 'success', message: 'Roster deleted successfully!' });
+      setFeedbackMessage({ type: 'success', message: `"${rosterName}" deleted successfully!` });
       
       // Clear success message after 3 seconds
       setTimeout(() => setFeedbackMessage(null), 3000);
@@ -688,6 +692,10 @@ export default function RosterPage() {
 
   const handleDeleteCurrentRoster = async () => {
     if (!currentRosterId || !userId) return;
+    
+    // Store the current roster name before deleting
+    const rosterNameToDelete = currentRosterName;
+    
     try {
       const { error } = await supabase
         .from('rosters')
@@ -700,7 +708,7 @@ export default function RosterPage() {
       setCurrentRosterName('Unsaved Roster');
       setEmployees([]);
       setOriginalEmployees([]);
-      setFeedbackMessage({ type: 'success', message: 'Roster deleted successfully!' });
+      setFeedbackMessage({ type: 'success', message: `"${rosterNameToDelete}" deleted successfully!` });
       setTimeout(() => setFeedbackMessage(null), 3000);
     } catch (error) {
       setFeedbackMessage({ type: 'error', message: 'Failed to delete roster.' });
@@ -1013,6 +1021,13 @@ export default function RosterPage() {
     }
   }, [schedulableDays]);
 
+  // Add effect to clear schedule when employees/preferences change
+  useEffect(() => {
+    if (schedule) {
+      setSchedule(null);
+    }
+  }, [employees]);
+
   const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1127,50 +1142,99 @@ export default function RosterPage() {
         <div className="max-w-7xl mx-auto flex flex-col gap-8">
           {/* Roster Management Section */}
           <div className="bg-white rounded-2xl shadow p-8 border border-gray-200">
-            <h1 className="text-2xl font-bold mb-6">Roster Management</h1>
-            {/* Roster Management Menu */}
-            <div className="mb-8 bg-white rounded-lg shadow p-4">
-              <div className="flex items-center gap-4 flex-wrap">
-                <div className="flex-1 min-w-[220px]">
-                  <select
-                    id="loadRoster"
-                    value={selectedRosterId}
-                    onChange={(e) => handleLoadRoster(e.target.value)}
-                    className="w-full"
+            <h2 className="text-2xl font-bold mb-6">Roster Management</h2>
+            
+            {/* Roster Operations - First Row */}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-3">Current Roster: {currentRosterName}</h3>
+              <div className="flex flex-wrap gap-3 mb-4">
+                <select
+                  value={selectedRosterId}
+                  onChange={e => setSelectedRosterId(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue"
+                >
+                  <option value="">Load Saved Roster</option>
+                  {savedRosters.map(roster => (
+                    <option key={roster.id} value={roster.id}>{roster.name}</option>
+                  ))}
+                </select>
+                {selectedRosterId && (
+                  <button
+                    onClick={() => handleLoadRoster(selectedRosterId)}
+                    className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
                   >
-                    <option value="">Load Saved Roster</option>
-                    {savedRosters.map(roster => (
-                      <option key={roster.id} value={roster.id}>
-                        {roster.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex-1 min-w-[220px]">
-                  <div className="flex gap-2">
+                    Load
+                  </button>
+                )}
+                
+                {/* Save New Roster */}
+                {!currentRosterId && employees.some(emp => emp.name && emp.name.trim() !== '') && (
+                  <div className="flex gap-2 items-center">
                     <input
                       type="text"
-                      id="rosterName"
                       value={newRosterName}
-                      onChange={(e) => setNewRosterName(e.target.value)}
-                      placeholder="Save Current Roster As..."
-                      className="flex-1"
+                      onChange={e => setNewRosterName(e.target.value)}
+                      placeholder="Enter roster name"
+                      className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue"
                     />
                     <button
                       onClick={handleSaveRoster}
-                      disabled={!newRosterName.trim()}
-                      className="bg-gray-400 text-white px-4 py-2 rounded font-semibold disabled:opacity-60"
+                      className="bg-green-600 text-white px-4 py-2 rounded font-semibold"
                     >
-                      Save
+                      Save Roster
                     </button>
                   </div>
+                )}
+                
+                {employees.some(emp => emp.name && emp.name.trim() !== '') && (
+                  <button
+                    onClick={handleNewRoster}
+                    className="bg-gray-600 text-white px-4 py-2 rounded font-semibold"
+                  >
+                    New Roster
+                  </button>
+                )}
+                
+                {currentRosterId && hasEmployeesChanged() && (
+                  <button
+                    onClick={handleUpdateRoster}
+                    className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
+                  >
+                    Update
+                  </button>
+                )}
+                
+                {currentRosterId && (
+                  <button
+                    onClick={handleDeleteCurrentRoster}
+                    className="bg-red-600 text-white px-4 py-2 rounded font-semibold"
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Employee Data Collection - Second Row */}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-3">Employee Data Collection</h3>
+              <div className="flex flex-wrap gap-3 items-center">
+                <button
+                  onClick={() => window.location.href = '/preference-sessions'}
+                  className="bg-green-600 text-white px-4 py-2 rounded font-semibold"
+                >
+                  📋 Send Preference Form to Employees
+                </button>
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 text-sm">or</span>
                 </div>
+                
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                  style={{ whiteSpace: 'nowrap' }}
                 >
-                  Import CSV
+                  📁 Import CSV
                 </button>
                 <input
                   type="file"
@@ -1179,140 +1243,101 @@ export default function RosterPage() {
                   accept=".csv"
                   className="hidden"
                 />
-                <a
-                  href="#"
+                
+                <button
                   onClick={e => { e.preventDefault(); downloadTemplate(); }}
-                  className="text-sm text-psu-blue hover:underline focus:underline outline-none bg-transparent border-none p-0 m-0 shadow-none"
-                  style={{ background: 'none', border: 'none', padding: 0, margin: 0, boxShadow: 'none', borderRadius: 0, display: 'inline', fontWeight: 400, whiteSpace: 'nowrap' }}
+                  className="bg-gray-500 text-white px-4 py-2 rounded font-semibold text-sm"
                 >
-                  Download CSV Template
-                </a>
+                  ⬇️ Download CSV Template
+                </button>
               </div>
+              
               {feedbackMessage && (
-                <div className={`${feedbackMessage.type === 'success' ? 'feedback-success' : 'feedback-error'} mt-4`}>
+                <div className={`mt-3 p-3 rounded ${feedbackMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                   {feedbackMessage.message}
                 </div>
               )}
+            </div>
+
+            {/* Day Selection - Third Row */}
+            <div className="mb-6">
+              <DaySelector selectedDays={schedulableDays} onChange={setSchedulableDays} />
               {schedulableDays.length < 7 && (
-                <div className="mt-2 text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-md p-3">
+                <div className="mt-3 text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-md p-3">
                   <strong>Note:</strong> Currently only scheduling for: <span className="font-medium text-blue-800">{schedulableDays.join(', ')}</span>. 
                   The CSV template will only include {schedulableDays.length} preference column{schedulableDays.length !== 1 ? 's' : ''} for these days.
                 </div>
               )}
             </div>
-            {/* NEW: Day Selector Component */}
-            <div className="mb-8">
-              <DaySelector selectedDays={schedulableDays} onChange={setSchedulableDays} />
-            </div>
-            {/* Employee Roster Section */}
-            <div className="mb-8">
-              <div className="flex items-center mb-1">
-                <h2 className="text-lg font-semibold m-0 mr-16">{currentRosterName}</h2>
-              </div>
-              <div className="flex gap-x-4 mt-1 mb-8">
-                {employees.some(emp => emp.name && emp.name.trim() !== '') && (
-                  <button
-                    onClick={handleNewRoster}
-                    className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                  >
-                    New Roster
-                  </button>
-                )}
-                {currentRosterId && hasEmployeesChanged() && (
-                  <>
-                    <button
-                      onClick={handleUpdateRoster}
-                      className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                    >
-                      Update
-                    </button>
-                    <button
-                      onClick={handleDeleteCurrentRoster}
-                      className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                    >
-                      Delete
-                    </button>
-                  </>
-                )}
-                {currentRosterId && !hasEmployeesChanged() && (
-                  <button
-                    onClick={handleDeleteCurrentRoster}
-                    className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-              <div className="bg-white rounded-lg shadow overflow-x-auto">
-                <table className="min-w-full">
-                  <thead>
-                    <tr>
-                      <th></th>
-                      <th scope="col">
-                        Employee Name
+
+            {/* Employee Roster Table */}
+            <div className="bg-white rounded-lg shadow overflow-x-auto">
+              <table className="min-w-full">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th scope="col">Employee Name</th>
+                    {Array.from({ length: schedulableDays.length }, (_, i) => (
+                      <th key={i} scope="col">
+                        {i + 1}{getOrdinalSuffix(i + 1)} Pref
                       </th>
-                      {Array.from({ length: schedulableDays.length }, (_, i) => (
-                        <th key={i} scope="col">
-                          {i + 1}{getOrdinalSuffix(i + 1)} Pref
-                        </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(employees || []).map((employee) => (
+                    <tr key={employee.id}>
+                      <td style={{ width: 40, textAlign: 'center' }}>
+                        <button
+                          onClick={() => handleRemoveEmployee(employee.id)}
+                          className="bg-psu-blue text-white px-2 py-1 rounded font-semibold"
+                          title="Delete employee"
+                        >
+                          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </button>
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          value={employee.name}
+                          onChange={e => setEmployees(employees.map(emp => emp.id === employee.id ? { ...emp, name: e.target.value } : emp))}
+                          placeholder="Enter employee name"
+                          className="text-sm font-medium"
+                        />
+                      </td>
+                      {Array.from({ length: schedulableDays.length }, (_, index) => (
+                        <td key={index}>
+                          <select
+                            value={employee.preferences[index] || ''}
+                            onChange={e => handlePreferenceChange(employee.id, index, e.target.value as DayOfWeek)}
+                            className={`mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md ${
+                              employee.preferences[index] && schedulableDays.includes(employee.preferences[index])
+                                ? 'bg-green-50 border-green-300 text-green-700' 
+                                : 'bg-gray-50 border-gray-300 text-gray-700'
+                            }`}
+                          >
+                            <option value="">Clear</option>
+                            {[employee.preferences[index], ...getAvailableDays(employee.preferences, index)]
+                                .filter((value, i, self) => (schedulableDays.includes(value) || value === '') && self.indexOf(value) === i)
+                                .map(day => (
+                                    <option key={day || `no-pref-${index}-${employee.id}`} value={day}>{DAY_ABBREVIATIONS[day] || day || 'Not Selected'}</option>
+                                ))}
+                          </select>
+                        </td>
                       ))}
                     </tr>
-                  </thead>
-                  <tbody>
-                    {(employees || []).map((employee) => (
-                      <tr key={employee.id}>
-                        <td style={{ width: 40, textAlign: 'center' }}>
-                          <button
-                            onClick={() => handleRemoveEmployee(employee.id)}
-                            className="bg-psu-blue text-white px-2 py-1 rounded font-semibold"
-                            title="Delete employee"
-                          >
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          </button>
-                        </td>
-                        <td>
-                          <input
-                            type="text"
-                            value={employee.name}
-                            onChange={e => setEmployees(employees.map(emp => emp.id === employee.id ? { ...emp, name: e.target.value } : emp))}
-                            placeholder="Enter employee name"
-                            className="text-sm font-medium"
-                          />
-                        </td>
-                        {Array.from({ length: schedulableDays.length }, (_, index) => (
-                          <td key={index}>
-                            <select
-                              value={employee.preferences[index] || ''}
-                              onChange={e => handlePreferenceChange(employee.id, index, e.target.value as DayOfWeek)}
-                              className={`mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md ${
-                                employee.preferences[index] && schedulableDays.includes(employee.preferences[index])
-                                  ? 'bg-green-50 border-green-300 text-green-700' 
-                                  : 'bg-gray-50 border-gray-300 text-gray-700'
-                              }`}
-                            >
-                              <option value="">Clear</option>
-                              {[employee.preferences[index], ...getAvailableDays(employee.preferences, index)]
-                                  .filter((value, i, self) => (schedulableDays.includes(value) || value === '') && self.indexOf(value) === i)
-                                  .map(day => (
-                                      <option key={day || `no-pref-${index}-${employee.id}`} value={day}>{DAY_ABBREVIATIONS[day] || day || 'Not Selected'}</option>
-                                  ))}
-                            </select>
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{ marginTop: 16 }}>
-                  <button
-                    onClick={handleAddEmployee}
-                    className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                  >
-                    + Add Employee
-                  </button>
-                </div>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ marginTop: 16 }}>
+                <button
+                  onClick={handleAddEmployee}
+                  className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
+                >
+                  + Add Employee
+                </button>
               </div>
             </div>
           </div>
