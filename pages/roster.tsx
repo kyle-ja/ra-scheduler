@@ -145,7 +145,7 @@ export default function RosterPage() {
   const [currentRosterId, setCurrentRosterId] = useState<string>('');
   const [originalEmployees, setOriginalEmployees] = useState<Employee[]>([]);
   const [schedulableDays, setSchedulableDays] = useState<DayOfWeek[]>(DAYS_OF_WEEK);
-  const [maxConsecutiveDays, setMaxConsecutiveDays] = useState<number>(2); // Default to 2
+  const [maxConsecutiveDays, setMaxConsecutiveDays] = useState<number>(1); // Default to 1
   const [dateSettings, setDateSettings] = useState<DateSetting[]>([]);
   const [newSettingName, setNewSettingName] = useState('');
   const [selectedSettingId, setSelectedSettingId] = useState<string>('');
@@ -962,17 +962,75 @@ export default function RosterPage() {
   }
 
   const handleExportToExcel = () => {
-    if (!schedule || schedule.length === 0 || !employees || employees.length === 0) {
-      alert("No schedule or employee data available to export.");
+    if (!employees || employees.length === 0) {
+      alert("No employee data available to export.");
       return;
     }
 
-    // 1. Main Schedule Data
-    const scheduleSheetData = schedule.map(item => ({
-      'Date': item.date,
-      'Day of Week': DAYS_OF_WEEK[item.weekday],
-      'Employee Name': item.employee,
-    }));
+    if (!startDate || !endDate) {
+      alert("No date range selected for export.");
+      return;
+    }
+
+    // Helper function to get month name
+    const getMonthName = (date: Date): string => {
+      return date.toLocaleString('default', { month: 'long' });
+    };
+
+    // Generate ALL dates in the range (not filtered by schedulable days)
+    const generateAllDatesInRange = () => {
+      const out: { date: string; weekday: number; month: string }[] = [];
+      const startDateObj = parseYYYYMMDDToLocalDate(startDate);
+      const endDateObj = parseYYYYMMDDToLocalDate(endDate);
+      if (!startDateObj || !endDateObj) return out;
+      
+      const cur = new Date(startDateObj.getTime());
+      const loopEndDate = new Date(endDateObj.getTime());
+      loopEndDate.setDate(loopEndDate.getDate() + 1);
+      
+      while (cur < loopEndDate) {
+        out.push({
+          date: cur.toISOString().slice(0, 10),
+          weekday: cur.getDay(),
+          month: getMonthName(cur)
+        });
+        cur.setDate(cur.getDate() + 1);
+      }
+      return out;
+    };
+
+    // 1. Main Schedule Data - include ALL dates in range
+    const allDatesInRange = generateAllDatesInRange();
+    console.log('All dates in range generated:', allDatesInRange);
+    
+    const scheduleMap = schedule ? schedule.reduce<Record<string, string>>((acc, item) => {
+      acc[item.date] = item.employee;
+      return acc;
+    }, {}) : {};
+    console.log('Schedule map:', scheduleMap);
+
+    // Get excluded dates for checking
+    const excludedDatesSet = getExcludedDatesSet(excludedDates);
+    
+    const scheduleSheetData = allDatesInRange.map((dateInfo: { date: string; weekday: number; month: string }) => {
+      const dateObj = parseYYYYMMDDToLocalDate(dateInfo.date);
+      const isExcluded = dateObj ? excludedDatesSet.has(dateObj.toDateString()) : false;
+      
+      let employeeName = '';
+      if (isExcluded) {
+        employeeName = '[EXCLUDED DAY]';
+      } else {
+        employeeName = scheduleMap[dateInfo.date] || ''; // Empty string if no one is scheduled
+      }
+      
+      return {
+        'Date': dateInfo.date,
+        'Month': dateInfo.month,
+        'Day of Week': DAYS_OF_WEEK[dateInfo.weekday],
+        'Employee Name': employeeName,
+      };
+    });
+    console.log('Final schedule sheet data:', scheduleSheetData);
 
     // 2. Roster/Preferences Table Data
     // Assuming preferences are ranked, up to 7 choices
@@ -1010,15 +1068,19 @@ export default function RosterPage() {
     XLSX.utils.book_append_sheet(wb, summaryWS, "Summary");
 
     // 4. Individual Employee Sheets
-    if (employees && schedule) {
+    if (employees && schedule && schedule.length > 0) {
       employees.forEach(employee => {
         if (employee.name) { // Ensure employee has a name for the sheet
           const employeeAssignments = schedule.filter(item => item.employee === employee.name);
           if (employeeAssignments.length > 0) {
-            const employeeSheetData = employeeAssignments.map(item => ({
-              'Date': item.date,
-              'Day of Week': DAYS_OF_WEEK[item.weekday],
-            }));
+            const employeeSheetData = employeeAssignments.map(item => {
+              const dateObj = parseYYYYMMDDToLocalDate(item.date);
+              return {
+                'Date': item.date,
+                'Month': dateObj ? getMonthName(dateObj) : '',
+                'Day of Week': DAYS_OF_WEEK[item.weekday],
+              };
+            });
             const employeeWS = XLSX.utils.json_to_sheet(employeeSheetData);
             
             // Sanitize employee name for sheet name (max 31 chars, remove invalid chars)
@@ -1736,11 +1798,11 @@ export default function RosterPage() {
                 >
                   {loading ? 'Generating…' : `Generate Schedule for ${totalSchedulableDays} Days`}
                 </button>
-                {schedule && schedule.length > 0 && (
+                {(startDate && endDate && employees.length > 0) && (
                   <button
                     className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
                     onClick={handleExportToExcel}
-                    disabled={!schedule || schedule.length === 0}
+                    disabled={!startDate || !endDate || employees.length === 0}
                   >
                     Export to Excel
                   </button>
@@ -1810,7 +1872,7 @@ export default function RosterPage() {
                         employeeBadgeContent = (
                           <p
                             className="text-xs text-gray-500 p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
-                            style={{ fontSize: '0.65rem' }}
+                            style={{ fontSize: '0.95rem' }}
                             title={exclusionTitle}
                           >
                             {exclusionTitle}
@@ -1820,7 +1882,7 @@ export default function RosterPage() {
                       employeeBadgeContent = (
                         <p 
                           className="text-xs text-white p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
-                          style={{ fontSize: '0.65rem' }}
+                          style={{ fontSize: '0.95rem' }}
                           title={employeeName}
                         >
                           {employeeName}

@@ -6,6 +6,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [message, setMessage] = useState('');
   const [showWelcome, setShowWelcome] = useState(false);
 
@@ -25,6 +26,22 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isForgotPassword) {
+      // Handle forgot password
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      
+      if (error) {
+        setMessage(error.message);
+      } else {
+        setMessage('Check your email for the password reset link.');
+      }
+      return;
+    }
+
+    // Handle regular login/signup
     const { error } = isSignUp
       ? await supabase.auth.signUp({ email, password })
       : await supabase.auth.signInWithPassword({ email, password });
@@ -37,6 +54,13 @@ export default function LoginPage() {
         router.push('/roster');
       }
     }
+  };
+
+  const resetToLogin = () => {
+    setIsForgotPassword(false);
+    setIsSignUp(false);
+    setMessage('');
+    setPassword('');
   };
 
   return (
@@ -69,7 +93,10 @@ export default function LoginPage() {
         flexDirection: 'column',
         alignItems: 'center',
       }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '1.5rem', color: 'var(--primary-black)' }}>{isSignUp ? 'Sign Up' : 'Log In'}</h1>
+        <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '1.5rem', color: 'var(--primary-black)' }}>
+          {isForgotPassword ? 'Reset Password' : isSignUp ? 'Sign Up' : 'Log In'}
+        </h1>
+        
         <form onSubmit={handleSubmit} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <input
             style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem 1rem', fontSize: '1rem' }}
@@ -79,14 +106,18 @@ export default function LoginPage() {
             onChange={e => setEmail(e.target.value)}
             required
           />
-          <input
-            style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem 1rem', fontSize: '1rem' }}
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-          />
+          
+          {!isForgotPassword && (
+            <input
+              style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem 1rem', fontSize: '1rem' }}
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+            />
+          )}
+          
           <button
             type="submit"
             style={{
@@ -101,27 +132,78 @@ export default function LoginPage() {
               transition: 'background 0.2s',
             }}
           >
-            {isSignUp ? 'Sign Up' : 'Log In'}
+            {isForgotPassword ? 'Send Reset Link' : isSignUp ? 'Sign Up' : 'Log In'}
           </button>
-          <button
-            type="button"
-            style={{
-              background: 'none',
-              color: 'var(--primary-blue)',
-              border: 'none',
-              textDecoration: 'underline',
-              fontSize: '0.95rem',
-              cursor: 'pointer',
-              marginTop: '-0.5rem',
-            }}
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setMessage('');
-            }}
-          >
-            {isSignUp ? 'Already have an account? Log in' : "Don't have an account? Sign up"}
-          </button>
-          {message && <p style={{ color: 'var(--error-red)', fontSize: '0.95rem', marginTop: '-0.5rem' }}>{message}</p>}
+          
+          {!isForgotPassword && (
+            <>
+              <button
+                type="button"
+                style={{
+                  background: 'none',
+                  color: 'var(--primary-blue)',
+                  border: 'none',
+                  textDecoration: 'underline',
+                  fontSize: '0.95rem',
+                  cursor: 'pointer',
+                  marginTop: '-0.5rem',
+                }}
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setMessage('');
+                }}
+              >
+                {isSignUp ? 'Already have an account? Log in' : "Don't have an account? Sign up"}
+              </button>
+              
+              <button
+                type="button"
+                style={{
+                  background: 'none',
+                  color: '#6b7280',
+                  border: 'none',
+                  textDecoration: 'underline',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  marginTop: '-0.75rem',
+                }}
+                onClick={() => {
+                  setIsForgotPassword(true);
+                  setMessage('');
+                }}
+              >
+                Forgot your password?
+              </button>
+            </>
+          )}
+          
+          {isForgotPassword && (
+            <button
+              type="button"
+              style={{
+                background: 'none',
+                color: 'var(--primary-blue)',
+                border: 'none',
+                textDecoration: 'underline',
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                marginTop: '-0.5rem',
+              }}
+              onClick={resetToLogin}
+            >
+              Back to login
+            </button>
+          )}
+          
+          {message && (
+            <p style={{ 
+              color: message.includes('Check your email') ? 'var(--primary-blue)' : 'var(--error-red)', 
+              fontSize: '0.95rem', 
+              marginTop: '-0.5rem' 
+            }}>
+              {message}
+            </p>
+          )}
         </form>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import DaySelector from '../components/DaySelector';
+import QRCode from 'qrcode';
 
 type DayOfWeek = 'Sunday' | 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | '';
 
@@ -37,6 +38,10 @@ export default function PreferenceSessionsPage() {
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const [sessionResponses, setSessionResponses] = useState<{ [sessionId: string]: EmployeeResponse[] }>({});
   const [loadingResponses, setLoadingResponses] = useState<string | null>(null);
+  
+  // Track pending deletions
+  const [pendingDeletions, setPendingDeletions] = useState<{ [sessionId: string]: string[] }>({});
+  const [savingChanges, setSavingChanges] = useState<boolean>(false);
 
   useEffect(() => {
     const loadUserAndSessions = async () => {
@@ -204,6 +209,123 @@ export default function PreferenceSessionsPage() {
     setTimeout(() => setFeedbackMessage(null), 2000);
   };
 
+  const downloadQRCode = async (sessionId: string, sessionName: string) => {
+    try {
+      const link = generateShareableLink(sessionId);
+      const qrCodeDataURL = await QRCode.toDataURL(link, {
+        width: 300,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+
+      // Create a download link
+      const downloadLink = document.createElement('a');
+      downloadLink.href = qrCodeDataURL;
+      downloadLink.download = `QR-Code-${sessionName.replace(/[^a-z0-9]/gi, '_')}.png`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+
+      setFeedbackMessage({ type: 'success', message: 'QR Code downloaded successfully!' });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+      setFeedbackMessage({ type: 'error', message: 'Failed to generate QR code' });
+    }
+  };
+
+  const handleMarkForDeletion = (responseId: string, sessionId: string, employeeName: string) => {
+    setPendingDeletions(prev => ({
+      ...prev,
+      [sessionId]: [...(prev[sessionId] || []), responseId]
+    }));
+
+    setFeedbackMessage({ type: 'success', message: `Response from "${employeeName}" marked for deletion. Click "Save Changes" to confirm.` });
+    setTimeout(() => setFeedbackMessage(null), 3000);
+  };
+
+  const handleCancelDeletions = (sessionId: string) => {
+    setPendingDeletions(prev => {
+      const updated = { ...prev };
+      delete updated[sessionId];
+      return updated;
+    });
+    
+    setFeedbackMessage({ type: 'success', message: 'Pending deletions cancelled.' });
+    setTimeout(() => setFeedbackMessage(null), 2000);
+  };
+
+  const handleSaveChanges = async (sessionId: string) => {
+    const responsesToDelete = pendingDeletions[sessionId] || [];
+    if (responsesToDelete.length === 0) return;
+
+    setSavingChanges(true);
+    try {
+      // First, verify that the session belongs to the current user
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('preference_sessions')
+        .select('manager_id')
+        .eq('id', sessionId)
+        .single();
+
+      if (sessionError) {
+        console.error('Error verifying session ownership:', sessionError);
+        throw new Error('Failed to verify session ownership');
+      }
+
+      if (sessionData.manager_id !== userId) {
+        throw new Error('Unauthorized: You can only delete responses from your own sessions');
+      }
+
+      // Delete all marked responses
+      const { data, error } = await supabase
+        .from('employee_responses')
+        .delete()
+        .in('id', responsesToDelete)
+        .eq('session_id', sessionId);
+
+      if (error) {
+        console.error('Supabase delete error:', error);
+        throw error;
+      }
+
+      console.log('Delete operation successful, deleted data:', data);
+
+      // Update the local state to remove the deleted responses
+      setSessionResponses(prev => ({
+        ...prev,
+        [sessionId]: prev[sessionId].filter(response => !responsesToDelete.includes(response.id))
+      }));
+
+      // Update the session response count in the sessions list
+      setSessions(prevSessions => 
+        prevSessions.map(session => 
+          session.id === sessionId 
+            ? { ...session, response_count: Math.max(0, (session.response_count || 0) - responsesToDelete.length) }
+            : session
+        )
+      );
+
+      // Clear pending deletions for this session
+      setPendingDeletions(prev => {
+        const updated = { ...prev };
+        delete updated[sessionId];
+        return updated;
+      });
+
+      setFeedbackMessage({ type: 'success', message: `${responsesToDelete.length} response${responsesToDelete.length !== 1 ? 's' : ''} deleted successfully!` });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+    } catch (error: any) {
+      console.error('Error deleting responses:', error);
+      setFeedbackMessage({ type: 'error', message: error.message || 'Failed to delete responses' });
+    } finally {
+      setSavingChanges(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
       <main className="container mx-auto p-4 sm:p-6 lg:p-8">
@@ -288,11 +410,11 @@ export default function PreferenceSessionsPage() {
                   <thead>
                     <tr className="border-b border-gray-200">
                       <th className="w-12"></th>
-                      <th scope="col" className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Session Details</th>
-                      <th scope="col" className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Available Days</th>
-                      <th scope="col" className="px-6 py-4 text-center text-sm font-semibold text-gray-900">Responses</th>
-                      <th scope="col" className="px-6 py-4 text-center text-sm font-semibold text-gray-900">Status</th>
-                      <th scope="col" className="px-6 py-4 text-center text-sm font-semibold text-gray-900">Actions</th>
+                      <th scope="col" className="px-6 py-4 text-left text-sm font-semibold text-white uppercase tracking-wider">Session Details</th>
+                      <th scope="col" className="px-6 py-4 text-left text-sm font-semibold text-white uppercase tracking-wider">Available Days</th>
+                      <th scope="col" className="px-6 py-4 text-center text-sm font-semibold text-white uppercase tracking-wider">Responses</th>
+                      <th scope="col" className="px-6 py-4 text-center text-sm font-semibold text-white uppercase tracking-wider">Status</th>
+                      <th scope="col" className="px-6 py-4 text-center text-sm font-semibold text-white uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
@@ -359,6 +481,17 @@ export default function PreferenceSessionsPage() {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                 </svg>
                                 Copy Link
+                              </button>
+                              
+                              <button
+                                onClick={() => downloadQRCode(session.id, session.name)}
+                                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-psu-blue transition-colors"
+                                title="Download QR code"
+                              >
+                                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                QR Code
                               </button>
                               
                               {(session.response_count || 0) > 0 && (
@@ -433,17 +566,37 @@ export default function PreferenceSessionsPage() {
                                 ) : (
                                   <div className="overflow-x-auto">
                                     <table className="min-w-full">
-                                      <thead className="bg-gray-50">
+                                      <thead className="bg-psu-blue">
                                         <tr>
-                                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
-                                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
-                                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Preferences</th>
-                                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted</th>
+                                          <th className="w-12"></th>
+                                          <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Employee</th>
+                                          <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Contact</th>
+                                          <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Preferences</th>
+                                          <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Submitted</th>
                                         </tr>
                                       </thead>
                                       <tbody className="bg-white divide-y divide-gray-200">
                                         {sessionResponses[session.id].map((response, responseIndex) => (
-                                          <tr key={response.id} className="hover:bg-gray-50 transition-colors">
+                                          <tr key={response.id} className={`transition-colors ${
+                                            pendingDeletions[session.id]?.includes(response.id)
+                                              ? 'bg-red-50 hover:bg-red-100 opacity-75'
+                                              : 'hover:bg-gray-50'
+                                          }`}>
+                                            <td className="px-3 py-4 text-center">
+                                              <button
+                                                onClick={() => handleMarkForDeletion(response.id, session.id, response.employee_name)}
+                                                className={`p-2 rounded-md transition-colors ${
+                                                  pendingDeletions[session.id]?.includes(response.id)
+                                                    ? 'text-red-600 bg-red-50' 
+                                                    : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                                                }`}
+                                                title={pendingDeletions[session.id]?.includes(response.id) ? "Marked for deletion" : "Mark for deletion"}
+                                              >
+                                                <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                                  <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                                </svg>
+                                              </button>
+                                            </td>
                                             <td className="px-6 py-4">
                                               <div className="text-sm font-medium text-gray-900">{response.employee_name}</div>
                                             </td>
@@ -489,6 +642,43 @@ export default function PreferenceSessionsPage() {
                                         ))}
                                       </tbody>
                                     </table>
+                                  </div>
+                                )}
+
+                                {/* Save/Cancel buttons for pending deletions */}
+                                {pendingDeletions[session.id] && pendingDeletions[session.id].length > 0 && (
+                                  <div className="px-6 py-4 bg-amber-50 border-t border-amber-200">
+                                    <div className="flex items-center justify-between">
+                                      <div className="text-sm text-amber-800">
+                                        <strong>{pendingDeletions[session.id].length}</strong> response{pendingDeletions[session.id].length !== 1 ? 's' : ''} marked for deletion
+                                      </div>
+                                      <div className="flex space-x-3">
+                                        <button
+                                          onClick={() => handleCancelDeletions(session.id)}
+                                          disabled={savingChanges}
+                                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50 transition-colors"
+                                        >
+                                          Cancel
+                                        </button>
+                                        <button
+                                          onClick={() => handleSaveChanges(session.id)}
+                                          disabled={savingChanges}
+                                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 transition-colors"
+                                        >
+                                          {savingChanges ? (
+                                            <>
+                                              <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                              </svg>
+                                              Saving...
+                                            </>
+                                          ) : (
+                                            'Save Changes'
+                                          )}
+                                        </button>
+                                      </div>
+                                    </div>
                                   </div>
                                 )}
                               </div>
