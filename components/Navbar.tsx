@@ -74,9 +74,9 @@ export default function Navbar() {
           <Link href="/preference-sessions" legacyBehavior>
             <a className="text-base font-medium text-gray-700 hover:text-psu-blue transition">Preference Collection</a>
           </Link>
-          <Link href="/export" legacyBehavior>
+          {/* <Link href="/export" legacyBehavior>
             <a className="text-base font-medium text-gray-700 hover:text-psu-blue transition">Exports</a>
-          </Link>
+          </Link> */}
         </div>
         <button onClick={handleLogout} className="ml-auto bg-psu-blue text-white px-4 py-2 rounded font-semibold hover:bg-psu-light-blue transition">Log Out</button>
       </nav>
