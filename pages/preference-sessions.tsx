@@ -212,9 +212,17 @@ export default function PreferenceSessionsPage() {
   const downloadQRCode = async (sessionId: string, sessionName: string) => {
     try {
       const link = generateShareableLink(sessionId);
+      
+      // DEBUG: Log the URL that's being encoded
+      console.log('Generated URL for QR code:', link);
+      
+      // Also show it in an alert so you can see it
+      alert(`QR Code URL: ${link}\n\nPlease check this matches what you manually typed.`);
+      
       const qrCodeDataURL = await QRCode.toDataURL(link, {
-        width: 300,
-        margin: 2,
+        width: 400, // Increased size for better scanning
+        margin: 4,  // Increased margin
+        errorCorrectionLevel: 'M', // Add error correction
         color: {
           dark: '#000000',
           light: '#FFFFFF'
