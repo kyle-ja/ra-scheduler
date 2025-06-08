@@ -86,14 +86,23 @@ Sent from RA Scheduler App Feedback Form
     res.status(200).json({ message: 'Feedback sent successfully' });
   } catch (error) {
     console.error('Detailed error:', error);
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error code:', error.code);
-    
-    res.status(500).json({ 
-      message: 'Error sending feedback',
-      error: error.message,
-      code: error.code 
-    });
+
+    // Type guard for error object
+    if (typeof error === 'object' && error !== null) {
+      const err = error as { name?: string; message?: string; code?: string };
+      console.error('Error name:', err.name);
+      console.error('Error message:', err.message);
+      console.error('Error code:', err.code);
+      res.status(500).json({ 
+        message: 'Error sending feedback',
+        error: err.message,
+        code: err.code 
+      });
+    } else {
+      res.status(500).json({ 
+        message: 'Error sending feedback',
+        error: String(error)
+      });
+    }
   }
 } 
