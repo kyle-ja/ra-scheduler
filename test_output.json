@@ -1,0 +1,17 @@
+[
+  {
+    "date": "2025-06-03",
+    "employee": "Sander",
+    "weekday": 1
+  },
+  {
+    "date": "2025-06-04",
+    "employee": "Sander",
+    "weekday": 2
+  },
+  {
+    "date": "2025-06-05",
+    "employee": "Kyle",
+    "weekday": 3
+  }
+]
