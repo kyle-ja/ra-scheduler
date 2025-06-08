@@ -213,16 +213,13 @@ export default function PreferenceSessionsPage() {
     try {
       const link = generateShareableLink(sessionId);
       
-      // DEBUG: Log the URL that's being encoded
-      console.log('Generated URL for QR code:', link);
+      // Ensure the URL is properly formatted
+      const cleanUrl = new URL(link).toString();
       
-      // Also show it in an alert so you can see it
-      alert(`QR Code URL: ${link}\n\nPlease check this matches what you manually typed.`);
-      
-      const qrCodeDataURL = await QRCode.toDataURL(link, {
-        width: 400, // Increased size for better scanning
-        margin: 4,  // Increased margin
-        errorCorrectionLevel: 'M', // Add error correction
+      const qrCodeDataURL = await QRCode.toDataURL(cleanUrl, {
+        width: 512,        // Larger size for better scanning
+        margin: 4,         // Good margin for scanning
+        errorCorrectionLevel: 'H', // High error correction for better reliability
         color: {
           dark: '#000000',
           light: '#FFFFFF'
