@@ -22,6 +22,7 @@ export default function EmployeePreferenceForm() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   
   // Form data
   const [employeeName, setEmployeeName] = useState('');
@@ -95,21 +96,39 @@ export default function EmployeePreferenceForm() {
     e.preventDefault();
     
     if (!employeeName.trim()) {
-      setError('Please enter your name.');
+      setFormError('Please enter your name.');
       return;
     }
 
     if (!employeeEmail.trim()) {
-      setError('Please enter your email address.');
+      setFormError('Please enter your email address.');
       return;
     }
 
     if (!session) return;
 
     setSubmitting(true);
-    setError(null);
+    setFormError(null);
 
     try {
+      // Check if an response already exists for this email and session
+      const { data: existingResponse, error: checkError } = await supabase
+        .from('employee_responses')
+        .select('id')
+        .eq('session_id', session.id)
+        .eq('employee_email', employeeEmail.trim())
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        // PGRST116 means no rows found, which is what we want
+        throw checkError;
+      }
+
+      if (existingResponse) {
+        setFormError('A response has already been submitted for this email address. Each email can only submit one response per session.');
+        return;
+      }
+
       const { error } = await supabase
         .from('employee_responses')
         .insert([{
@@ -124,7 +143,7 @@ export default function EmployeePreferenceForm() {
       setSubmitted(true);
     } catch (err) {
       console.error('Error submitting response:', err);
-      setError('Failed to submit your preferences. Please try again.');
+      setFormError('Failed to submit your preferences. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -361,13 +380,20 @@ export default function EmployeePreferenceForm() {
                 </div>
               </div>
 
-              {error && (
+              {formError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                   <div className="flex items-center">
-                    <svg className="w-5 h-5 text-red-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-red-600 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <p className="text-sm text-red-600 font-medium">{error}</p>
+                    <p className="text-sm text-red-600 font-medium flex-1">{formError}</p>
+                    <button
+                      onClick={() => setFormError(null)}
+                      className="ml-4 inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors flex-shrink-0"
+                      type="button"
+                    >
+                      Try Again
+                    </button>
                   </div>
                 </div>
               )}

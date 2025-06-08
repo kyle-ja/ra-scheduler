@@ -232,7 +232,116 @@ export default function RosterPage() {
     prefCounts: (number | string)[]; // Array of 7 for preferences 1-7. String is "not selected"
     noPreferenceCount: number;
     totalDaysAssigned: number;
+    efficiencyScore: number;
   }
+
+  // Tooltip component for efficiency score explanation
+  const EfficiencyScoreTooltip = () => {
+    const [showTooltip, setShowTooltip] = useState(false);
+
+    // Close tooltip when clicking outside
+    useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        if (showTooltip && !(event.target as Element).closest('.efficiency-tooltip-container')) {
+          setShowTooltip(false);
+        }
+      };
+
+      if (showTooltip) {
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }
+    }, [showTooltip]);
+
+    return (
+      <>
+        <div className="relative inline-block efficiency-tooltip-container">
+          <button
+            onClick={() => setShowTooltip(!showTooltip)}
+            className="ml-1 w-4 h-4 bg-blue-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300 transition-colors"
+            aria-label="Efficiency Score Information"
+          >
+            ?
+          </button>
+        </div>
+        
+        {/* Full-screen overlay modal */}
+        {showTooltip && (
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl p-6 m-4 max-w-md w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-lg font-bold text-gray-900">Efficiency Score Explained</h3>
+                <button
+                  onClick={() => setShowTooltip(false)}
+                  className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-4 text-sm text-gray-700">
+                <div>
+                  <h4 className="font-semibold text-blue-600 mb-2">How the scoring works:</h4>
+                  <ul className="space-y-1 ml-4">
+                    <li className="flex items-center">
+                      <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                      <span><strong>7 points</strong> for each 1st preference day</span>
+                    </li>
+                    <li className="flex items-center">
+                      <span className="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
+                      <span><strong>6 points</strong> for each 2nd preference day</span>
+                    </li>
+                    <li className="flex items-center">
+                      <span className="w-2 h-2 bg-green-300 rounded-full mr-2"></span>
+                      <span><strong>5 points</strong> for each 3rd preference day</span>
+                    </li>
+                    <li className="flex items-center">
+                      <span className="w-2 h-2 bg-yellow-400 rounded-full mr-2"></span>
+                      <span><strong>4, 3, 2, 1 points</strong> for 4th-7th preferences</span>
+                    </li>
+                    <li className="flex items-center">
+                      <span className="w-2 h-2 bg-red-400 rounded-full mr-2"></span>
+                      <span><strong>0 points</strong> for non-preference days</span>
+                    </li>
+                  </ul>
+                </div>
+                
+                <div className="border-t pt-4">
+                  <h4 className="font-semibold text-blue-600 mb-2">Average Score Interpretation:</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center p-2 bg-green-50 rounded">
+                      <span><strong>7.0</strong> = Perfect schedule</span>
+                      <span className="text-green-600 text-xs">(all 1st preferences)</span>
+                    </div>
+                    <div className="flex justify-between items-center p-2 bg-green-50 rounded">
+                      <span><strong>6.0</strong> = Excellent</span>
+                      <span className="text-green-600 text-xs">(all 2nd preferences)</span>
+                    </div>
+                    <div className="flex justify-between items-center p-2 bg-yellow-50 rounded">
+                      <span><strong>3.5</strong> = Good balance</span>
+                      <span className="text-yellow-600 text-xs">(mixed preferences)</span>
+                    </div>
+                    <div className="flex justify-between items-center p-2 bg-red-50 rounded">
+                      <span><strong>0.0</strong> = Poor match</span>
+                      <span className="text-red-600 text-xs">(no preferences met)</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <p className="text-blue-700 text-xs">
+                    💡 <strong>Tip:</strong> Higher efficiency scores indicate better employee satisfaction as more employees are getting their preferred days.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
 
   const scheduleSummaryData = useMemo((): ScheduleSummaryRow[] => {
     if (!schedule || !employees || employees.length === 0) {
@@ -247,6 +356,7 @@ export default function RosterPage() {
         prefCounts: [],
         noPreferenceCount: 0,
         totalDaysAssigned: 0,
+        efficiencyScore: 0,
       };
 
       // Initialize prefCounts
@@ -295,9 +405,30 @@ export default function RosterPage() {
           summaryRow.noPreferenceCount++;
         }
       }
+
+      // Calculate efficiency score
+      // 7 points for 1st preference, 6 for 2nd, 5 for 3rd, etc.
+      for (let i = 0; i < summaryRow.prefCounts.length; i++) {
+        const count = summaryRow.prefCounts[i];
+        if (typeof count === 'number') {
+          summaryRow.efficiencyScore += count * (7 - i);
+        }
+      }
+      // No points for days that don't match any preference
+
       return summaryRow;
     });
   }, [schedule, employees]);
+
+  // Calculate average efficiency score
+  const averageEfficiencyScore = useMemo((): number => {
+    if (scheduleSummaryData.length === 0) return 0;
+    
+    const totalEfficiencyPoints = scheduleSummaryData.reduce((sum, row) => sum + row.efficiencyScore, 0);
+    const totalScheduledDays = scheduleSummaryData.reduce((sum, row) => sum + row.totalDaysAssigned, 0);
+    
+    return totalScheduledDays > 0 ? totalEfficiencyPoints / totalScheduledDays : 0;
+  }, [scheduleSummaryData]);
 
   // Load user ID and saved rosters on component mount
   useEffect(() => {
@@ -1044,7 +1175,7 @@ export default function RosterPage() {
 
     // 3. Summary Table Data
     // Headers for summary table - adjust if needed based on scheduleSummaryData structure
-    const summarySheetData = scheduleSummaryData.map(row => ({
+    const summarySheetData: any[] = scheduleSummaryData.map(row => ({
       'Employee Name': row.employeeName,
       'Pref 1 Count': row.prefCounts[0],
       'Pref 2 Count': row.prefCounts[1],
@@ -1055,7 +1186,25 @@ export default function RosterPage() {
       'Pref 7 Count': row.prefCounts[6],
       'No Preference Count': row.noPreferenceCount,
       'Total Days Assigned': row.totalDaysAssigned,
+      'Efficiency Score': row.efficiencyScore,
     }));
+
+    // Add average efficiency score row to the summary data
+    if (scheduleSummaryData.length > 0) {
+      summarySheetData.push({
+        'Employee Name': 'AVERAGE',
+        'Pref 1 Count': '',
+        'Pref 2 Count': '',
+        'Pref 3 Count': '',
+        'Pref 4 Count': '',
+        'Pref 5 Count': '',
+        'Pref 6 Count': '',
+        'Pref 7 Count': '',
+        'No Preference Count': '',
+        'Total Days Assigned': '',
+        'Efficiency Score': `${averageEfficiencyScore.toFixed(2)} pts/day`,
+      });
+    }
 
 
     const wb = XLSX.utils.book_new();
@@ -1277,6 +1426,16 @@ export default function RosterPage() {
       console.error('Error loading preference session:', error);
       setFeedbackMessage({ type: 'error', message: 'Failed to load preference session responses' });
     }
+  };
+
+  // Helper function to get color and description for efficiency score
+  const getEfficiencyScoreDisplay = (score: number) => {
+    if (score >= 6.5) return { color: 'text-green-600', bg: 'bg-green-50', desc: 'Excellent', emoji: '🌟' };
+    if (score >= 5.5) return { color: 'text-green-500', bg: 'bg-green-50', desc: 'Very Good', emoji: '✅' };
+    if (score >= 4.0) return { color: 'text-yellow-600', bg: 'bg-yellow-50', desc: 'Good', emoji: '👍' };
+    if (score >= 2.5) return { color: 'text-orange-600', bg: 'bg-orange-50', desc: 'Fair', emoji: '⚠️' };
+    if (score >= 1.0) return { color: 'text-red-600', bg: 'bg-red-50', desc: 'Poor', emoji: '❗' };
+    return { color: 'text-red-700', bg: 'bg-red-50', desc: 'Very Poor', emoji: '🚨' };
   };
 
   return (
@@ -1957,6 +2116,12 @@ export default function RosterPage() {
                         ))}
                         <th className="px-3 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">No Pref</th>
                         <th className="px-3 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Total Days</th>
+                        <th className="px-3 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                          <div className="flex items-center justify-center">
+                            Efficiency Score
+                            <EfficiencyScoreTooltip />
+                          </div>
+                        </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white">
@@ -1970,8 +2135,58 @@ export default function RosterPage() {
                           ))}
                           <td className="px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800 text-center">{row.noPreferenceCount}</td>
                           <td className="px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800 text-center">{row.totalDaysAssigned}</td>
+                          <td className="px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800 text-center font-semibold">
+                            {row.efficiencyScore}
+                          </td>
                       </tr>
                     ))}
+                    {/* Average row */}
+                    <tr className="bg-green-50 border-t-2 border-green-300">
+                      <td className="px-4 py-3 border-b border-gray-200 text-sm font-bold text-gray-900">
+                        Overall Efficiency
+                      </td>
+                      <td colSpan={10} className="px-3 py-3 border-b border-gray-200 bg-green-100">
+                        <div className="flex flex-col space-y-2">
+                          {/* Score and description */}
+                          <div className="flex items-center justify-center space-x-2">
+                            <span className="text-lg font-bold text-gray-900">
+                              {averageEfficiencyScore.toFixed(2)}
+                            </span>
+                            <span className="text-gray-500 text-sm">/ 7.0</span>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getEfficiencyScoreDisplay(averageEfficiencyScore).bg} ${getEfficiencyScoreDisplay(averageEfficiencyScore).color}`}>
+                              {getEfficiencyScoreDisplay(averageEfficiencyScore).emoji} {getEfficiencyScoreDisplay(averageEfficiencyScore).desc}
+                            </span>
+                          </div>
+                          
+                          {/* Visual progress bar */}
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs text-gray-500 w-8">0</span>
+                            <div className="flex-1 bg-gray-200 rounded-full h-2 relative">
+                              <div 
+                                className="bg-gradient-to-r from-red-400 via-yellow-400 to-green-400 h-2 rounded-full transition-all duration-500"
+                                style={{ width: `${Math.min((averageEfficiencyScore / 7) * 100, 100)}%` }}
+                              ></div>
+                              {/* Score indicator dot */}
+                              <div 
+                                className="absolute top-1/2 w-3 h-3 bg-gray-800 border-2 border-white rounded-full transform -translate-y-1/2 shadow-sm"
+                                style={{ left: `${Math.min((averageEfficiencyScore / 7) * 100, 100)}%`, marginLeft: '-6px' }}
+                              ></div>
+                            </div>
+                            <span className="text-xs text-gray-500 w-8">7</span>
+                          </div>
+                          
+                          {/* Interpretation text */}
+                          <div className="text-center text-xs text-gray-600">
+                            {averageEfficiencyScore >= 6.5 && "🎉 Outstanding preference matching! Most employees got their top choices."}
+                            {averageEfficiencyScore >= 5.5 && averageEfficiencyScore < 6.5 && "💚 Great job! Employees are mostly getting their preferred days."}
+                            {averageEfficiencyScore >= 4.0 && averageEfficiencyScore < 5.5 && "👍 Good balance between preferences and scheduling needs."}
+                            {averageEfficiencyScore >= 2.5 && averageEfficiencyScore < 4.0 && "⚠️ Some preference mismatches. Consider adjusting if possible."}
+                            {averageEfficiencyScore >= 1.0 && averageEfficiencyScore < 2.5 && "❗ Many employees not getting preferred days."}
+                            {averageEfficiencyScore < 1.0 && "🚨 Low preference matching. Review constraints and try again."}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>

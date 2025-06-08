@@ -2,10 +2,12 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
+import FeedbackModal from './FeedbackModal';
 
 export default function Navbar() {
   // Simulate welcome message state (in real app, use context or prop)
   const [showWelcome, setShowWelcome] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -78,8 +80,20 @@ export default function Navbar() {
             <a className="text-base font-medium text-gray-700 hover:text-psu-blue transition">Exports</a>
           </Link> */}
         </div>
-        <button onClick={handleLogout} className="ml-auto bg-psu-blue text-white px-4 py-2 rounded font-semibold hover:bg-psu-light-blue transition">Log Out</button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setIsFeedbackModalOpen(true)}
+            className="bg-psu-gold text-psu-blue px-4 py-2 rounded font-semibold hover:bg-yellow-400 transition"
+          >
+            Feedback
+          </button>
+          <button onClick={handleLogout} className="bg-psu-blue text-white px-4 py-2 rounded font-semibold hover:bg-psu-light-blue transition">Log Out</button>
+        </div>
       </nav>
+      <FeedbackModal 
+        isOpen={isFeedbackModalOpen} 
+        onClose={() => setIsFeedbackModalOpen(false)} 
+      />
     </>
   );
 } 
