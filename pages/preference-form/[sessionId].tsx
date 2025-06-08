@@ -99,6 +99,11 @@ export default function EmployeePreferenceForm() {
       return;
     }
 
+    if (!employeeEmail.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+
     if (!session) return;
 
     setSubmitting(true);
@@ -259,13 +264,14 @@ export default function EmployeePreferenceForm() {
 
                     <div>
                       <label htmlFor="employeeEmail" className="block text-sm font-medium text-gray-700 mb-2">
-                        Email Address <span className="text-gray-400">(Optional)</span>
+                        Email Address <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="email"
                         id="employeeEmail"
                         value={employeeEmail}
                         onChange={e => setEmployeeEmail(e.target.value)}
+                        required
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         placeholder="your.email@example.com"
                       />
