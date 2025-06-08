@@ -1017,7 +1017,7 @@ export default function RosterPage() {
       console.log("FILTERED Dates for solver:", JSON.stringify(dates));
 
       // 3) POST to our API with the FILTERED dates list
-      const res = await fetch('/api/generateSchedule', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SOLVER_API_URL}/generate-schedule`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employees: employeeData, dates, max_consecutive_days: maxConsecutiveDays }),
