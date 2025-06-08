@@ -1,11 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-
-type FeedbackData = {
-  name?: string;
-  feedback: string;
-  category: string;
-  email?: string;
-};
+import { supabase } from '../../lib/supabaseClient';
 
 export default async function handler(
   req: NextApiRequest,
@@ -16,72 +10,51 @@ export default async function handler(
   }
 
   try {
-    const { name, feedback, category, email }: FeedbackData = req.body;
+    const { name, feedback, category, email } = req.body;
 
-    if (!feedback || !feedback.trim()) {
+    console.log('Received data:', { name, feedback, category, email });
+
+    if (!feedback) {
       return res.status(400).json({ message: 'Feedback is required' });
     }
 
-    // Check environment variables
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.error('Missing email credentials in environment variables');
-      return res.status(500).json({ message: 'Email configuration missing' });
+    console.log('Attempting to insert feedback...');
+
+    // Direct insert without the problematic connection test
+    const { data, error } = await supabase
+      .from('feedback')
+      .insert({
+        name: name || null,
+        email: email || null,
+        category: category || 'General Feedback',
+        feedback: feedback
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Insert error:', error);
+      return res.status(500).json({ 
+        message: 'Database insert failed',
+        error: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
     }
 
-    const nodemailer = require('nodemailer');
+    console.log('Success! Inserted:', data);
 
-    // Format the email content
-    const emailSubject = `RA Scheduler App - ${category}`;
-    const emailBody = `
-New feedback received from the RA Scheduler App:
-
-Category: ${category}
-Name: ${name || 'Anonymous'}
-Email: ${email || 'Not provided'}
-
-Feedback/Suggestion:
-${feedback}
-
----
-Sent from RA Scheduler App Feedback Form
-    `.trim();
-
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
+    res.status(200).json({ 
+      message: 'Feedback saved successfully!',
+      data: data
     });
 
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: 'kyleanthony.kja@gmail.com',
-      subject: emailSubject,
-      text: emailBody,
-      replyTo: email || undefined,
-    };
-
-    await transporter.sendMail(mailOptions);
-
-    res.status(200).json({ message: 'Feedback sent successfully' });
-  } catch (error) {
-    // Only log actual errors, not debugging info
-    console.error('Error sending feedback:', error);
-
-    // Type guard for error object
-    if (typeof error === 'object' && error !== null) {
-      const err = error as { name?: string; message?: string; code?: string };
-      res.status(500).json({ 
-        message: 'Error sending feedback',
-        error: err.message,
-        code: err.code 
-      });
-    } else {
-      res.status(500).json({ 
-        message: 'Error sending feedback',
-        error: String(error)
-      });
-    }
+  } catch (error: any) {
+    console.error('Unexpected error:', error);
+    res.status(500).json({ 
+      message: 'Unexpected error',
+      error: error.message || String(error)
+    });
   }
 } 
