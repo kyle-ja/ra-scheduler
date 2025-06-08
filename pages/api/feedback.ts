@@ -11,39 +11,24 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  console.log('API called with method:', req.method);
-  
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
   try {
     const { name, feedback, category, email }: FeedbackData = req.body;
-    console.log('Received feedback data:', { name, category, email, feedbackLength: feedback?.length });
 
     if (!feedback || !feedback.trim()) {
       return res.status(400).json({ message: 'Feedback is required' });
     }
 
     // Check environment variables
-    console.log('EMAIL_USER exists:', !!process.env.EMAIL_USER);
-    console.log('EMAIL_PASS exists:', !!process.env.EMAIL_PASS);
-    console.log('EMAIL_USER value:', process.env.EMAIL_USER);
-
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.error('Missing email credentials');
+      console.error('Missing email credentials in environment variables');
       return res.status(500).json({ message: 'Email configuration missing' });
     }
 
-    // Try to import nodemailer
-    let nodemailer;
-    try {
-      nodemailer = require('nodemailer');
-      console.log('Nodemailer imported successfully');
-    } catch (importError) {
-      console.error('Failed to import nodemailer:', importError);
-      return res.status(500).json({ message: 'Nodemailer not installed' });
-    }
+    const nodemailer = require('nodemailer');
 
     // Format the email content
     const emailSubject = `RA Scheduler App - ${category}`;
@@ -61,8 +46,6 @@ ${feedback}
 Sent from RA Scheduler App Feedback Form
     `.trim();
 
-    console.log('Creating transporter...');
-    
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -79,20 +62,16 @@ Sent from RA Scheduler App Feedback Form
       replyTo: email || undefined,
     };
 
-    console.log('Attempting to send email...');
     await transporter.sendMail(mailOptions);
-    console.log('Email sent successfully!');
 
     res.status(200).json({ message: 'Feedback sent successfully' });
   } catch (error) {
-    console.error('Detailed error:', error);
+    // Only log actual errors, not debugging info
+    console.error('Error sending feedback:', error);
 
     // Type guard for error object
     if (typeof error === 'object' && error !== null) {
       const err = error as { name?: string; message?: string; code?: string };
-      console.error('Error name:', err.name);
-      console.error('Error message:', err.message);
-      console.error('Error code:', err.code);
       res.status(500).json({ 
         message: 'Error sending feedback',
         error: err.message,
