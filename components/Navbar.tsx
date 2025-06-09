@@ -81,6 +81,11 @@ export default function Navbar() {
           </Link> */}
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/account" legacyBehavior>
+            <a className="bg-gray-100 text-gray-700 px-4 py-2 rounded font-semibold hover:bg-gray-200 transition">
+              Account
+            </a>
+          </Link>
           <button 
             onClick={() => setIsFeedbackModalOpen(true)}
             className="bg-psu-gold text-psu-blue px-4 py-2 rounded font-semibold hover:bg-yellow-400 transition"
