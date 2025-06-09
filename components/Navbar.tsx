@@ -28,8 +28,13 @@ export default function Navbar() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
+    try {
+      await supabase.auth.signOut();
+      window.location.href = '/'; // Redirect to home page after logout
+    } catch (error) {
+      console.error('Error during logout:', error);
+      window.location.href = '/'; // Fallback to home page
+    }
   };
 
   // Hide navbar completely for preference form pages
