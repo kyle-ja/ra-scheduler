@@ -42,6 +42,9 @@ export default function PreferenceSessionsPage() {
   // Track pending deletions
   const [pendingDeletions, setPendingDeletions] = useState<{ [sessionId: string]: string[] }>({});
   const [savingChanges, setSavingChanges] = useState<boolean>(false);
+  
+  // Track rename values for each session
+  const [renameValues, setRenameValues] = useState<{ [sessionId: string]: string }>({});
 
   useEffect(() => {
     const loadUserAndSessions = async () => {
@@ -331,6 +334,46 @@ export default function PreferenceSessionsPage() {
     }
   };
 
+  const handleRenameSession = async (sessionId: string) => {
+    const newName = renameValues[sessionId]?.trim();
+    if (!newName || !userId) {
+      setFeedbackMessage({ type: 'error', message: 'Please enter a valid session name' });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('preference_sessions')
+        .update({ name: newName })
+        .eq('id', sessionId)
+        .eq('manager_id', userId);
+
+      if (error) throw error;
+
+      // Update local state
+      setSessions(prevSessions => 
+        prevSessions.map(session => 
+          session.id === sessionId 
+            ? { ...session, name: newName }
+            : session
+        )
+      );
+
+      // Clear the rename input for this session
+      setRenameValues(prev => {
+        const updated = { ...prev };
+        delete updated[sessionId];
+        return updated;
+      });
+
+      setFeedbackMessage({ type: 'success', message: 'Session renamed successfully!' });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+    } catch (error) {
+      console.error('Error renaming session:', error);
+      setFeedbackMessage({ type: 'error', message: 'Failed to rename session.' });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
       <main className="container mx-auto p-4 sm:p-6 lg:p-8">
@@ -439,12 +482,28 @@ export default function PreferenceSessionsPage() {
                           </td>
                           <td className="px-6 py-4">
                             <div>
-                              <div className="text-sm font-semibold text-gray-900">{session.name}</div>
-                              <div className="text-xs text-gray-500 mt-1">
+                              <div className="text-sm font-semibold text-gray-900 mb-2">{session.name}</div>
+                              <div className="text-xs text-gray-500 mb-2">
                                 Created {new Date(session.created_at).toLocaleDateString()}
                                 {session.expires_at && (
                                   <span> • Expires {new Date(session.expires_at).toLocaleDateString()}</span>
                                 )}
+                              </div>
+                              {/* Rename functionality */}
+                              <div className="flex gap-2 items-center">
+                                <input
+                                  type="text"
+                                  value={renameValues[session.id] || ''}
+                                  onChange={e => setRenameValues(prev => ({ ...prev, [session.id]: e.target.value }))}
+                                  placeholder="Enter new name"
+                                  className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-psu-blue"
+                                />
+                                <button
+                                  onClick={() => handleRenameSession(session.id)}
+                                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                                >
+                                  Rename
+                                </button>
                               </div>
                             </div>
                           </td>

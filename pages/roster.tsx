@@ -150,6 +150,7 @@ export default function RosterPage() {
   const [newSettingName, setNewSettingName] = useState('');
   const [selectedSettingId, setSelectedSettingId] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [renameValue, setRenameValue] = useState('');
   
   // Add new state for preference sessions
   const [preferenceSessions, setPreferenceSessions] = useState<PreferenceSessionForRoster[]>([]);
@@ -734,6 +735,7 @@ export default function RosterPage() {
       setCurrentRosterId(selectedRoster.id);
       setSchedulableDays(selectedRoster.schedulable_days || DAYS_OF_WEEK);
       setSchedule(null);
+      setRenameValue('');
     }
   };
 
@@ -876,10 +878,42 @@ export default function RosterPage() {
       setCurrentRosterName('Unsaved Roster');
       setEmployees([]);
       setOriginalEmployees([]);
+      setRenameValue('');
       setFeedbackMessage({ type: 'success', message: `"${rosterNameToDelete}" deleted successfully!` });
       setTimeout(() => setFeedbackMessage(null), 3000);
     } catch (error) {
       setFeedbackMessage({ type: 'error', message: 'Failed to delete roster.' });
+    }
+  };
+
+  const handleRenameRoster = async () => {
+    if (!currentRosterId || !userId || !renameValue.trim()) {
+      setFeedbackMessage({ type: 'error', message: 'Please enter a valid roster name' });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('rosters')
+        .update({ name: renameValue.trim() })
+        .eq('id', currentRosterId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      // Update local state
+      setSavedRosters(savedRosters.map(roster => 
+        roster.id === currentRosterId 
+          ? { ...roster, name: renameValue.trim() }
+          : roster
+      ));
+      setCurrentRosterName(renameValue.trim());
+      setRenameValue('');
+      setFeedbackMessage({ type: 'success', message: 'Roster renamed successfully!' });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+    } catch (error) {
+      console.error('Error renaming roster:', error);
+      setFeedbackMessage({ type: 'error', message: 'Failed to rename roster.' });
     }
   };
 
@@ -896,6 +930,7 @@ export default function RosterPage() {
     setNewRosterName('');
     setSchedulableDays(DAYS_OF_WEEK);
     setSchedule(null);
+    setRenameValue('');
   };
 
   // Add useEffect to initialize empty row when component mounts
@@ -1538,12 +1573,29 @@ export default function RosterPage() {
                 )}
                 
                 {currentRosterId && (
-                  <button
-                    onClick={handleDeleteCurrentRoster}
-                    className="bg-red-600 text-white px-4 py-2 rounded font-semibold"
-                  >
-                    Delete
-                  </button>
+                  <>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="text"
+                        value={renameValue}
+                        onChange={e => setRenameValue(e.target.value)}
+                        placeholder="Enter new name"
+                        className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue"
+                      />
+                      <button
+                        onClick={handleRenameRoster}
+                        className="bg-blue-600 text-white px-4 py-2 rounded font-semibold"
+                      >
+                        Rename
+                      </button>
+                    </div>
+                    <button
+                      onClick={handleDeleteCurrentRoster}
+                      className="bg-red-600 text-white px-4 py-2 rounded font-semibold"
+                    >
+                      Delete
+                    </button>
+                  </>
                 )}
               </div>
             </div>
