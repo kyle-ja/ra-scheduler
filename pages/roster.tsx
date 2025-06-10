@@ -2136,7 +2136,7 @@ export default function RosterPage() {
                           <td className="px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800 text-center">{row.noPreferenceCount}</td>
                           <td className="px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800 text-center">{row.totalDaysAssigned}</td>
                           <td className="px-3 py-3 border-b border-gray-200 whitespace-nowrap text-sm text-gray-800 text-center font-semibold">
-                            {row.efficiencyScore}
+                            {row.efficiencyScore} / {row.totalDaysAssigned * 7}
                           </td>
                       </tr>
                     ))}
