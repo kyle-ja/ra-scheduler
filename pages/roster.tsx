@@ -6,6 +6,7 @@ import Calendar from 'react-calendar';
 import * as XLSX from 'xlsx';
 // ---------- helpers ----------
 import { differenceInCalendarDays, addDays, isWithinInterval } from "date-fns";
+import SmoothProgressBar from '../components/SmoothProgressBar';
 
 // Add custom styles for excluded dates
 const excludedDateStyles = `
@@ -192,6 +193,8 @@ export default function RosterPage() {
 
   // Shows a spinner or error message later
   const [loading, setLoading] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   // Calculate total number of schedulable days
@@ -963,19 +966,30 @@ export default function RosterPage() {
   };
 
   const handleGenerateSchedule = async () => {
+    let timerInterval: NodeJS.Timeout | undefined;
     try {
       setLoading(true);
       setError(null);
+      setGenerationProgress(0);
+      setElapsedTime(0);
+      
+      // Start the timer
+      const startTime = Date.now();
+      timerInterval = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+      }, 1000);
 
       if (!startDate || !endDate) {
         setError("Please select both a start and end date.");
         setLoading(false);
+        clearInterval(timerInterval);
         return;
       }
       
       if (schedulableDays.length === 0) {
         setError("No schedulable days selected. Please select at least one day of the week to schedule.");
         setLoading(false);
+        clearInterval(timerInterval);
         return;
       }
 
@@ -986,6 +1000,7 @@ export default function RosterPage() {
       if (incompleteRangeExclusions) {
         setError("Please complete all date range exclusions by providing both start and end dates.");
         setLoading(false);
+        clearInterval(timerInterval);
         return;
       }
 
@@ -993,6 +1008,7 @@ export default function RosterPage() {
       const excludedDatesSet = getExcludedDatesSet(excludedDates);
 
       // 1) Build the `employees` array (employeeData) - cost logic remains important for preferences on allowed days
+      setGenerationProgress(10);
       const rankWeights = [0, 20, 40];
       const employeeData = employees.map((emp: Employee) => {
         const cost = Array(7).fill(1000);
@@ -1018,6 +1034,7 @@ export default function RosterPage() {
       });
 
       // 2) Build the `dates` array, NOW FILTERED by schedulableDays AND excluded dates
+      setGenerationProgress(20);
       const buildDateRange = (startStr: string, endStr: string) => {
         const out: { date: string; weekday: number }[] = [];
         const startDateObj = parseYYYYMMDDToLocalDate(startStr);
@@ -1045,9 +1062,11 @@ export default function RosterPage() {
       if (dates.length === 0) {
         setError("No schedulable days fall within the selected date range based on your day-of-week selection and excluded dates, or the date range itself is invalid. Please adjust your selections.");
         setLoading(false);
+        clearInterval(timerInterval);
         return;
       }
 
+      setGenerationProgress(30);
       console.log("Employee data for solver:", JSON.stringify(employeeData));
       console.log("FILTERED Dates for solver:", JSON.stringify(dates));
 
@@ -1057,6 +1076,8 @@ export default function RosterPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employees: employeeData, dates, max_consecutive_days: maxConsecutiveDays }),
       });
+
+      setGenerationProgress(70);
 
       if (!res.ok) {
         const errorText = await res.text();
@@ -1070,8 +1091,10 @@ export default function RosterPage() {
         throw new Error("No valid schedule could be generated with the current settings. Please adjust your inputs and try again.");
       }
 
+      setGenerationProgress(90);
       setSchedule(json);
       console.log('Received schedule:', json);
+      setGenerationProgress(100);
     } catch (err: any) {
       console.error(err);
       // Show a user-friendly error message if the error contains backend/traceback details
@@ -1086,6 +1109,7 @@ export default function RosterPage() {
       setSchedule(null); // Clear any existing schedule on error
     } finally {
       setLoading(false);
+      clearInterval(timerInterval);
     }
   };
 
@@ -2001,7 +2025,7 @@ export default function RosterPage() {
             </div>
             {/* Generate/Export buttons row */}
             <div className="flex flex-col gap-4 mb-6">
-              <div className="flex flex-row gap-4">
+              <div className="flex flex-row gap-4 items-center">
                 <button
                   className="rounded bg-primary-blue px-4 py-2 text-white hover:opacity-90 disabled:opacity-50"
                   onClick={handleGenerateSchedule}
@@ -2009,6 +2033,14 @@ export default function RosterPage() {
                 >
                   {loading ? 'Generating…' : `Generate Schedule for ${totalSchedulableDays} Days`}
                 </button>
+                {loading && (
+                  <div className="flex items-center gap-4">
+                    <SmoothProgressBar taskComplete={!loading} duration={10} />
+                    <span className="text-sm text-gray-600">
+                      {elapsedTime}s
+                    </span>
+                  </div>
+                )}
                 {(startDate && endDate && employees.length > 0) && (
                   <button
                     className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
