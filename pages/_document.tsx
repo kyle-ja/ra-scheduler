@@ -4,6 +4,7 @@ export default function Document() {
   return (
     <Html lang="en">
       <Head />
+      <meta name="google-site-verification" content="xewiP9Wju6-kVFZ6Yd_Em05wrLk9KlfrUNmLTwVmkS8" />
       <body className="antialiased">
         <Main />
         <NextScript />
