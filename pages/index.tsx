@@ -57,10 +57,10 @@ export default function Home() {
               Smarter Shift Scheduling in Seconds
             </h1>
             <h2 className="text-xl sm:text-2xl md:text-3xl text-[var(--primary-black)] mb-4 max-w-4xl mx-auto">
-              Automatically build optimized employee schedules based on ranked preferences — no spreadsheets or headaches.
+              Automatically create smart staff schedules using ranked shift preferences — no spreadsheets, no stress.
             </h2>
             <p className="text-base sm:text-lg text-gray-500 italic mb-12 max-w-2xl mx-auto">
-              Perfect for RA staff scheduling, event crews, student workers, and more.
+              Perfect for resident assistant shift scheduling, student employee teams, event staff, and more.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-6 mb-8">
               <Link 
