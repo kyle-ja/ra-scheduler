@@ -39,7 +39,7 @@ export default function FeedbackAdmin() {
     
     if (!userEmail || !adminEmails.includes(userEmail)) {
       // User is not an admin, redirect them
-      router.push('/dashboard'); // or wherever you want to redirect non-admins
+      router.push('/index'); // or wherever you want to redirect non-admins
       return;
     }
   };
