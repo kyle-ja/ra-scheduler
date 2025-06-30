@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import Head from 'next/head';
+
 
 export default function Home() {
   const router = useRouter();
@@ -37,6 +39,15 @@ export default function Home() {
   };
 
   return (
+    <>
+    <Head>
+      <title>Smarter Shift Scheduling | RA Scheduler</title>
+      <meta
+      name="description"
+      content="Build optimized shift schedules based on staff preferences in seconds — no spreadsheets, no stress. Ideal for RAs, student workers, and coordinators."
+      />
+    </Head>
+
     <div className="min-h-screen bg-[var(--background-white)]" style={{ fontFamily: 'Poppins, Arial, Helvetica, sans-serif' }}>
       {/* Hero Section */}
       <div className="min-h-[60vh] flex items-center justify-center px-4 sm:px-6 lg:px-8 pt-24">
@@ -286,6 +297,7 @@ export default function Home() {
         </div>
       </footer>
     </div>
+    </>
   );
 }
 
