@@ -41,10 +41,10 @@ export default function Home() {
   return (
     <>
     <Head>
-      <title>Smarter Shift Scheduling | RA Scheduler</title>
+      <title>Staff Scheduling by Preferences | RA Scheduler</title>
       <meta
-      name="description"
-      content="Build optimized shift schedules based on staff preferences in seconds — no spreadsheets, no stress. Ideal for RAs, student workers, and coordinators."
+        name="description"
+        content="Automated employee scheduling based on ranked preferences. Great for RAs, student workers, and staff coordinators — no spreadsheets needed."
       />
     </Head>
 
