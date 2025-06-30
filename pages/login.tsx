@@ -9,7 +9,6 @@ export default function LoginPage() {
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [message, setMessage] = useState('');
   const [showWelcome, setShowWelcome] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
 
   const router = useRouter();
 
@@ -32,7 +31,6 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     
     if (isForgotPassword) {
       // Handle forgot password
@@ -45,7 +43,6 @@ export default function LoginPage() {
       } else {
         setMessage('Check your email for the password reset link.');
       }
-      setIsLoading(false);
       return;
     }
 
@@ -59,7 +56,6 @@ export default function LoginPage() {
           }
         })
       : await supabase.auth.signInWithPassword({ email, password });
-    
     if (error) {
       setMessage(error.message);
     } else {
@@ -69,7 +65,6 @@ export default function LoginPage() {
         router.push('/roster');
       }
     }
-    setIsLoading(false);
   };
 
   const resetToLogin = () => {
@@ -80,262 +75,177 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center" 
-         style={{ 
-           fontFamily: 'Poppins, Arial, Helvetica, sans-serif',
-           background: '#f8fafc'
-         }}>
-
+    <div className="min-h-screen flex items-center justify-center bg-[var(--background-white)]" style={{ fontFamily: 'Poppins, Arial, Helvetica, sans-serif' }}>
       {showWelcome && (
-        <div className="fixed top-6 right-6 z-50"
-             style={{
-               background: 'var(--primary-blue)',
-               color: '#ffffff',
-               padding: '12px 20px',
-               borderRadius: '8px',
-               boxShadow: '0 4px 12px rgba(0,30,68,0.15)',
-               fontWeight: 600,
-               fontSize: '14px',
-             }}>
+        <div style={{
+          position: 'fixed',
+          top: '2rem',
+          right: '2rem',
+          background: 'var(--primary-blue)',
+          color: '#fff',
+          padding: '1rem 2rem',
+          borderRadius: '0.75rem',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
+          fontWeight: 600,
+          zIndex: 1000,
+          fontSize: '1.1rem',
+        }}>
           Welcome!
         </div>
       )}
-
-      <div className="w-full max-w-md mx-4">
-        <div style={{
-          background: '#ffffff',
-          borderRadius: '12px',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)',
-          border: '1px solid #e2e8f0',
-          padding: '48px 32px',
-        }}>
+      <div style={{
+        background: '#fff',
+        borderRadius: '1.25rem',
+        boxShadow: '0 4px 32px rgba(0,0,0,0.10)',
+        padding: '2.5rem 2rem',
+        width: '100%',
+        maxWidth: 380,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+      }}>
+        <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '1.5rem', color: 'var(--primary-black)' }}>
+          {isForgotPassword ? 'Reset Password' : isSignUp ? 'Sign Up' : 'Log In'}
+        </h1>
+        
+        <form onSubmit={handleSubmit} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <input
+            style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem 1rem', fontSize: '1rem' }}
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+          />
           
-          {/* Header */}
-          <div className="text-center mb-8">
-            <h1 style={{ 
-              fontSize: '28px', 
-              fontWeight: 700, 
-              color: 'var(--primary-black)',
-              marginBottom: '8px',
-              lineHeight: '1.2'
-            }}>
-              {isForgotPassword ? 'Reset Password' : isSignUp ? 'Create Account' : 'Sign In'}
-            </h1>
-            <p style={{ 
-              color: '#64748b', 
-              fontSize: '14px',
-              lineHeight: '1.5'
-            }}>
-              {isForgotPassword 
-                ? 'Enter your email to receive a reset link' 
-                : isSignUp 
-                ? 'Create your account to get started' 
-                : 'Enter your credentials to continue'
-              }
-            </p>
-          </div>
+          {!isForgotPassword && (
+            <input
+              style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem 1rem', fontSize: '1rem' }}
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+            />
+          )}
           
-          <form onSubmit={handleSubmit}>
-            {/* Email Input */}
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ 
-                display: 'block', 
-                fontSize: '14px', 
-                fontWeight: 500,
-                color: 'var(--primary-black)',
-                marginBottom: '6px' 
-              }}>
-                Email
-              </label>
-              <input
-                style={{ 
-                  width: '100%',
-                  padding: '12px 16px',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  backgroundColor: '#ffffff',
-                  color: 'var(--primary-black)',
-                  transition: 'border-color 0.2s, box-shadow 0.2s',
-                  boxSizing: 'border-box'
-                }}
-                type="email"
-                placeholder="Enter your email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                onFocus={e => e.target.style.borderColor = 'var(--primary-blue)'}
-                onBlur={e => e.target.style.borderColor = '#d1d5db'}
-                required
-              />
-            </div>
-            
-            {/* Password Input */}
-            {!isForgotPassword && (
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ 
-                  display: 'block', 
-                  fontSize: '14px', 
+          <button
+            type="submit"
+            style={{
+              background: 'var(--primary-blue)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '0.5rem',
+              padding: '0.75rem',
+              fontWeight: 600,
+              fontSize: '1rem',
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+            }}
+          >
+            {isForgotPassword ? 'Send Reset Link' : isSignUp ? 'Sign Up' : 'Log In'}
+          </button>
+          
+          {!isForgotPassword && (
+            <>
+              <button
+                type="button"
+                style={{
+                  background: 'none',
+                  color: 'var(--primary-blue)',
+                  border: 'none',
+                  fontSize: '0.95rem',
+                  cursor: 'pointer',
+                  marginTop: '0.1rem',
                   fontWeight: 500,
-                  color: 'var(--primary-black)',
-                  marginBottom: '6px' 
-                }}>
-                  Password
-                </label>
-                <input
-                  style={{ 
-                    width: '100%',
-                    padding: '12px 16px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '8px',
-                    fontSize: '16px',
-                    backgroundColor: '#ffffff',
-                    color: 'var(--primary-black)',
-                    transition: 'border-color 0.2s, box-shadow 0.2s',
-                    boxSizing: 'border-box'
-                  }}
-                  type="password"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  onFocus={e => e.target.style.borderColor = 'var(--primary-blue)'}
-                  onBlur={e => e.target.style.borderColor = '#d1d5db'}
-                  required
-                />
-              </div>
-            )}
-            
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                background: isLoading ? '#9ca3af' : 'var(--primary-blue)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                fontWeight: 600,
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                transition: 'background-color 0.2s',
-                marginBottom: '20px'
-              }}
-              onMouseEnter={e => {
-                if (!isLoading) {
-                  e.target.style.backgroundColor = '#1E407C';
-                }
-              }}
-              onMouseLeave={e => {
-                if (!isLoading) {
-                  e.target.style.backgroundColor = 'var(--primary-blue)';
-                }
-              }}
-            >
-              {isLoading ? 'Processing...' : (
-                isForgotPassword ? 'Send Reset Link' : isSignUp ? 'Create Account' : 'Sign In'
-              )}
-            </button>
-            
-            {/* Message Display */}
-            {message && (
-              <div style={{
-                padding: '12px 16px',
-                borderRadius: '8px',
-                fontSize: '14px',
-                marginBottom: '20px',
-                backgroundColor: message.includes('Check your email') || message.includes('deleted') 
-                  ? '#f0f9ff' : '#fef2f2',
-                color: message.includes('Check your email') || message.includes('deleted') 
-                  ? '#1e40af' : '#dc2626',
-                border: `1px solid ${message.includes('Check your email') || message.includes('deleted') 
-                  ? '#bfdbfe' : '#fecaca'}`
-              }}>
-                {message}
-              </div>
-            )}
-          </form>
+                  padding: '0.1rem 0',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.02)';
+                  e.currentTarget.style.fontWeight = '600';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                  e.currentTarget.style.fontWeight = '500';
+                }}
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setMessage('');
+                }}
+              >
+                {isSignUp ? 'Already have an account? Log in' : "Don't have an account? Sign up"}
+              </button>
+              
+              <button
+                type="button"
+                style={{
+                  background: 'none',
+                  color: '#6b7280',
+                  border: 'none',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  marginTop: '0.1rem',
+                  fontWeight: 400,
+                  padding: '0.1rem 0',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.02)';
+                  e.currentTarget.style.fontWeight = '500';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                  e.currentTarget.style.fontWeight = '400';
+                }}
+                onClick={() => {
+                  setIsForgotPassword(true);
+                  setMessage('');
+                }}
+              >
+                Forgot your password?
+              </button>
+            </>
+          )}
           
-          {/* Action Links */}
-          <div className="text-center space-y-3">
-            {!isForgotPassword && (
-              <>
-                <div>
-                  <button
-                    type="button"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--primary-blue)',
-                      fontSize: '14px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      textDecoration: 'none'
-                    }}
-                    onMouseEnter={e => e.target.style.textDecoration = 'underline'}
-                    onMouseLeave={e => e.target.style.textDecoration = 'none'}
-                    onClick={() => {
-                      setIsSignUp(!isSignUp);
-                      setMessage('');
-                    }}
-                  >
-                    {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
-                  </button>
-                </div>
-                
-                <div>
-                  <button
-                    type="button"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#64748b',
-                      fontSize: '14px',
-                      cursor: 'pointer',
-                      textDecoration: 'none'
-                    }}
-                    onMouseEnter={e => {
-                      e.target.style.textDecoration = 'underline';
-                      e.target.style.color = 'var(--primary-black)';
-                    }}
-                    onMouseLeave={e => {
-                      e.target.style.textDecoration = 'none';
-                      e.target.style.color = '#64748b';
-                    }}
-                    onClick={() => {
-                      setIsForgotPassword(true);
-                      setMessage('');
-                    }}
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-              </>
-            )}
-            
-            {isForgotPassword && (
-              <div>
-                <button
-                  type="button"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--primary-blue)',
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    textDecoration: 'none'
-                  }}
-                  onMouseEnter={e => e.target.style.textDecoration = 'underline'}
-                  onMouseLeave={e => e.target.style.textDecoration = 'none'}
-                  onClick={resetToLogin}
-                >
-                  ← Back to sign in
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+          {isForgotPassword && (
+            <button
+              type="button"
+              style={{
+                background: 'none',
+                color: 'var(--primary-blue)',
+                border: 'none',
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                marginTop: '0.1rem',
+                fontWeight: 500,
+                padding: '0.1rem 0',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.02)';
+                e.currentTarget.style.fontWeight = '600';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.fontWeight = '500';
+              }}
+              onClick={resetToLogin}
+            >
+              Back to login
+            </button>
+          )}
+          
+          {message && (
+            <p style={{ 
+              color: message.includes('Check your email') ? 'var(--primary-blue)' : 'var(--error-red)', 
+              fontSize: '0.95rem', 
+              marginTop: '-0.5rem' 
+            }}>
+              {message}
+            </p>
+          )}
+        </form>
       </div>
     </div>
   );

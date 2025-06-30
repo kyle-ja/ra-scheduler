@@ -194,10 +194,11 @@ export default function ResetPasswordPage() {
                   background: 'none',
                   color: 'var(--primary-blue)',
                   border: 'none',
-                  textDecoration: 'underline',
                   fontSize: '0.95rem',
                   cursor: 'pointer',
                   marginTop: '-0.5rem',
+                  fontWeight: 500,
+                  padding: '0.5rem 0',
                 }}
               >
                 Back to Login
