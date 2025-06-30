@@ -22,7 +22,12 @@ export default function LoginPage() {
       }
     };
     checkSession();
-  }, []);
+
+    // Check for account deletion message
+    if (router.query.message === 'account-deleted') {
+      setMessage('Your account and all associated data have been successfully deleted.');
+    }
+  }, [router.query]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
