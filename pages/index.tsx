@@ -46,6 +46,16 @@ export default function Home() {
         name="description"
         content="Automated employee scheduling based on ranked preferences. Great for RAs, student workers, and staff coordinators — no spreadsheets needed."
       />
+        <meta property="og:title" content="Schedule by Preference — Smart Staff Scheduling" />
+        <meta property="og:description" content="Build fair, optimized shift schedules using ranked preferences. Ideal for RA teams, student workers, and more." />
+        <meta property="og:image" content="https://schedulebypreference.com/og-image.png" />
+        <meta property="og:url" content="https://schedulebypreference.com/" />
+        <meta property="og:type" content="website" />
+
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Schedule by Preference — Smart Staff Scheduling" />
+        <meta name="twitter:description" content="Build shift schedules in seconds using preferences — no spreadsheets needed." />
+        <meta name="twitter:image" content="https://schedulebypreference.com/og-image.png" />
     </Head>
 
     <div className="min-h-screen bg-[var(--background-white)]" style={{ fontFamily: 'Poppins, Arial, Helvetica, sans-serif' }}>
