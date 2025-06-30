@@ -21,6 +21,8 @@ export default function Navbar() {
     }
   }, []);
 
+
+  //comment for new commit
   const handleLogoutAndGoHome = async (e: React.MouseEvent) => {
     e.preventDefault();
     await supabase.auth.signOut();
