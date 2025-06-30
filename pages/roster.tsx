@@ -110,7 +110,7 @@ interface DateSetting {
 const DAYS_OF_WEEK: DayOfWeek[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 // Employee limit configuration - change this value to adjust the limit
-const MAX_EMPLOYEES = 21;
+const MAX_EMPLOYEES = 20;
 
 // Add this helper for day abbreviations
 const DAY_ABBREVIATIONS: { [key in DayOfWeek]: string } = {
