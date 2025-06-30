@@ -1,0 +1,9 @@
+# *
+User-agent: *
+Allow: /
+
+# Host
+Host: https://schedulebypreference.com
+
+# Sitemaps
+Sitemap: https://schedulebypreference.com/sitemap.xml
