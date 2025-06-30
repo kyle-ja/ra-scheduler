@@ -60,109 +60,152 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-psu-blue">Feature Request / Feedback</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-xl font-bold"
-          >
-            ×
-          </button>
+    <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-auto transform transition-all duration-300 scale-100">
+        {/* Header */}
+        <div className="relative bg-gradient-to-r from-psu-blue to-psu-light-blue rounded-t-2xl p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">Share Your Feedback</h2>
+                <p className="text-psu-white text-opacity-80 text-sm">Help us improve your experience</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-full flex items-center justify-center transition-all duration-200 group"
+            >
+              <svg className="w-4 h-4 text-white group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-              Name (optional)
-            </label>
-            <input
-              type="text"
-              id="name"
-              name="name"
-              value={formData.name}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue focus:border-psu-blue"
-              placeholder="Your name"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">
-              Category
-            </label>
-            <select
-              id="category"
-              name="category"
-              value={formData.category}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue focus:border-psu-blue"
-            >
-              <option value="Bug">Bug</option>
-              <option value="Feature Request">Feature Request</option>
-              <option value="General Feedback">General Feedback</option>
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="feedback" className="block text-sm font-medium text-gray-700 mb-1">
-              Feedback / Suggestion <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              id="feedback"
-              name="feedback"
-              value={formData.feedback}
-              onChange={handleInputChange}
-              rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue focus:border-psu-blue"
-              placeholder="Please describe your feedback, suggestion, or the bug you encountered..."
-              required
-            />
-          </div>
-
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-              Email (optional, for follow-up)
-            </label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue focus:border-psu-blue"
-              placeholder="your.email@example.com"
-            />
-          </div>
-
-          {submitMessage && (
-            <div className={`p-3 rounded-md text-sm ${
-              submitMessage.includes('Thank you') 
-                ? 'bg-green-100 text-green-700' 
-                : 'bg-red-100 text-red-700'
-            }`}>
-              {submitMessage}
+        {/* Form Content */}
+        <div className="p-6 space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-2">
+                Name <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="text"
+                id="name"
+                name="name"
+                value={formData.name}
+                onChange={handleInputChange}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-psu-blue focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                placeholder="Your name"
+              />
             </div>
-          )}
 
-          <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex-1 px-4 py-2 bg-psu-blue text-white rounded-md hover:bg-psu-light-blue transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? 'Sending...' : 'Submit'}
-            </button>
-          </div>
-        </form>
+            <div>
+              <label htmlFor="category" className="block text-sm font-semibold text-gray-700 mb-2">
+                Category
+              </label>
+              <div className="relative">
+                <select
+                  id="category"
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-psu-blue focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white appearance-none cursor-pointer pr-10"
+                >
+                  <option value="Bug">🐛 Bug Report</option>
+                  <option value="Feature Request">💡 Feature Request</option>
+                  <option value="General Feedback">💬 General Feedback</option>
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="feedback" className="block text-sm font-semibold text-gray-700 mb-2">
+                Your Feedback <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                id="feedback"
+                name="feedback"
+                value={formData.feedback}
+                onChange={handleInputChange}
+                rows={4}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-psu-blue focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white resize-none"
+                placeholder="Tell us what you think, what you'd like to see, or any issues you've encountered..."
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
+                Email <span className="text-gray-400 font-normal">(optional, for follow-up)</span>
+              </label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-psu-blue focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                placeholder="your.email@example.com"
+              />
+            </div>
+
+            {submitMessage && (
+              <div className={`p-4 rounded-xl text-sm font-medium ${
+                submitMessage.includes('Thank you') 
+                  ? 'bg-green-50 text-green-700 border border-green-200' 
+                  : 'bg-red-50 text-red-700 border border-red-200'
+              }`}>
+                <div className="flex items-center space-x-2">
+                  {submitMessage.includes('Thank you') ? (
+                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                  <span>{submitMessage}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-6 py-3 border-2 border-gray-200 text-white rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-psu-blue to-psu-light-blue text-white rounded-xl hover:from-psu-light-blue hover:to-psu-blue transition-all duration-200 font-semibold disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl"
+              >
+                {isSubmitting ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Sending...</span>
+                  </div>
+                ) : (
+                  'Submit Feedback'
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

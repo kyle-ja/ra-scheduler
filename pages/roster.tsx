@@ -109,6 +109,9 @@ interface DateSetting {
 
 const DAYS_OF_WEEK: DayOfWeek[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// Employee limit configuration - change this value to adjust the limit
+const MAX_EMPLOYEES = 21;
+
 // Add this helper for day abbreviations
 const DAY_ABBREVIATIONS: { [key in DayOfWeek]: string } = {
   Sunday: 'Sun',
@@ -805,6 +808,14 @@ export default function RosterPage() {
   }
 
   const handleAddEmployee = () => {
+    if (employees.length >= MAX_EMPLOYEES) {
+      setFeedbackMessage({ 
+        type: 'error', 
+        message: `Employee limit reached. Maximum ${MAX_EMPLOYEES} employees allowed.` 
+      });
+      return;
+    }
+    
     setEmployees([
       ...employees,
       {
@@ -988,6 +999,22 @@ export default function RosterPage() {
       
       if (schedulableDays.length === 0) {
         setError("No schedulable days selected. Please select at least one day of the week to schedule.");
+        setLoading(false);
+        clearInterval(timerInterval);
+        return;
+      }
+
+      // Check employee limit
+      const validEmployees = employees.filter(emp => emp.name && emp.name.trim() !== '');
+      if (validEmployees.length > MAX_EMPLOYEES) {
+        setError(`Cannot generate schedule with more than ${MAX_EMPLOYEES} employees. Please reduce the number of employees.`);
+        setLoading(false);
+        clearInterval(timerInterval);
+        return;
+      }
+
+      if (validEmployees.length === 0) {
+        setError("No employees with names found. Please add at least one employee with a name.");
         setLoading(false);
         clearInterval(timerInterval);
         return;
@@ -1368,7 +1395,7 @@ export default function RosterPage() {
       }
 
       // Process employee data
-      const newEmployees = rows.slice(1)
+      const allEmployees = rows.slice(1)
         .filter(row => row[0] && row[0].trim() !== '') // Skip empty rows
         .map(row => {
           // Create preferences array with proper length (match schedulable days)
@@ -1383,6 +1410,10 @@ export default function RosterPage() {
             preferences: preferences
           };
         });
+
+      // Limit to MAX_EMPLOYEES
+      const newEmployees = allEmployees.slice(0, MAX_EMPLOYEES);
+      const wasLimited = allEmployees.length > MAX_EMPLOYEES;
 
       console.log('Processed employees:', newEmployees);
 
@@ -1402,10 +1433,18 @@ export default function RosterPage() {
       setCurrentRosterId('');
       setOriginalEmployees([]);
       setSelectedRosterId('');
-      setFeedbackMessage({ 
-        type: 'success', 
-        message: `Successfully imported ${newEmployees.length} employees.` 
-      });
+      
+      if (wasLimited) {
+        setFeedbackMessage({ 
+          type: 'error', 
+          message: `CSV contained ${allEmployees.length} employees. Only the first ${MAX_EMPLOYEES} were imported due to employee limit.` 
+        });
+      } else {
+        setFeedbackMessage({ 
+          type: 'success', 
+          message: `Successfully imported ${newEmployees.length} employees.` 
+        });
+      }
       event.target.value = "";
     };
     reader.readAsText(file);
@@ -1460,25 +1499,36 @@ export default function RosterPage() {
       if (error) throw error;
 
       // Convert responses to Employee format
-      const employeesFromResponses: Employee[] = responses.map(response => ({
+      const allEmployeesFromResponses: Employee[] = responses.map(response => ({
         id: response.id,
         name: response.employee_name,
         preferences: response.preferences.concat(Array(7 - response.preferences.length).fill(''))
       }));
 
+      // Limit to MAX_EMPLOYEES
+      const employeesFromResponses = allEmployeesFromResponses.slice(0, MAX_EMPLOYEES);
+      const wasLimited = allEmployeesFromResponses.length > MAX_EMPLOYEES;
+
       // Load into state
       setEmployees(employeesFromResponses);
       setOriginalEmployees(employeesFromResponses);
       setSelectedRosterId(''); // Clear selected roster
-      setCurrentRosterName(`${selectedSession.name} (${responses.length} responses)`);
+      setCurrentRosterName(`${selectedSession.name} (${employeesFromResponses.length} responses)`);
       setCurrentRosterId(''); // This is from a session, not a saved roster
       setSchedulableDays(selectedSession.schedulable_days);
       setSchedule(null);
       
-      setFeedbackMessage({ 
-        type: 'success', 
-        message: `Loaded ${responses.length} employee responses from preference session` 
-      });
+      if (wasLimited) {
+        setFeedbackMessage({ 
+          type: 'error', 
+          message: `Preference session had ${allEmployeesFromResponses.length} responses. Only the first ${MAX_EMPLOYEES} were loaded due to employee limit.` 
+        });
+      } else {
+        setFeedbackMessage({ 
+          type: 'success', 
+          message: `Loaded ${employeesFromResponses.length} employee responses from preference session` 
+        });
+      }
       setTimeout(() => setFeedbackMessage(null), 3000);
 
     } catch (error) {
@@ -1741,12 +1791,23 @@ export default function RosterPage() {
                 </tbody>
               </table>
               <div style={{ marginTop: 16 }}>
-                <button
-                  onClick={handleAddEmployee}
-                  className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
-                >
-                  + Add Employee
-                </button>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={handleAddEmployee}
+                    disabled={employees.length >= MAX_EMPLOYEES}
+                    className={`px-4 py-2 rounded font-semibold ${
+                      employees.length >= MAX_EMPLOYEES 
+                        ? 'bg-gray-400 text-gray-700 cursor-not-allowed' 
+                        : 'bg-psu-blue text-white hover:bg-blue-700'
+                    }`}
+                    title={employees.length >= MAX_EMPLOYEES ? `Maximum ${MAX_EMPLOYEES} employees allowed` : 'Add a new employee'}
+                  >
+                    + Add Employee
+                  </button>
+                  <span className="text-sm text-gray-600">
+                    {employees.length}/{MAX_EMPLOYEES} employees
+                  </span>
+                </div>
               </div>
             </div>
           </div>
