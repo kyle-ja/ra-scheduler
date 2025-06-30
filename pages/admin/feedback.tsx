@@ -32,6 +32,16 @@ export default function FeedbackAdmin() {
       router.push('/login');
       return;
     }
+
+    // Check if user is admin - replace with your email
+    const adminEmails = ['kyleanthony.kja@gmail.com']; // Add your email here
+    const userEmail = session.user.email;
+    
+    if (!userEmail || !adminEmails.includes(userEmail)) {
+      // User is not an admin, redirect them
+      router.push('/dashboard'); // or wherever you want to redirect non-admins
+      return;
+    }
   };
 
   const fetchFeedback = async () => {
