@@ -38,6 +38,7 @@ export default function Home() {
     setOpenFaq(openFaq === index ? null : index);
   };
 
+  //
   return (
     <>
     <Head>
