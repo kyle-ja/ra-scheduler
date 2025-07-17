@@ -87,6 +87,21 @@ export default function Home() {
                 👁️ See How It Works
               </button>
             </div>
+            {/* YouTube Video Section */}
+            <div className="mt-12 mb-8">
+              <div className="max-w-4xl mx-auto">
+                <div className="relative w-full" style={{ paddingBottom: '56.25%' /* 16:9 aspect ratio */ }}>
+                  <iframe
+                    className="absolute top-0 left-0 w-full h-full rounded-lg shadow-lg"
+                    src="https://www.youtube.com/embed/7EzEeMlduEE"
+                    title="RA Scheduler Demo"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  ></iframe>
+                </div>
+              </div>
+            </div>
             {/* Platform UI Showcase */}
             <div className="flex flex-col md:flex-row justify-center items-center mt-8 mb-24 space-y-4 md:space-y-0 md:space-x-4">
               <img src="/roster-ui.png" alt="Roster Management UI" className="w-full md:w-1/2 rounded-lg shadow-md" />
