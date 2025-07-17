@@ -32,7 +32,7 @@ const DaySelector: React.FC<DaySelectorProps> = ({ selectedDays, onChange }) => 
               onChange={() => handleDayChange(day)}
               className="form-checkbox h-5 w-5 text-blue-600 rounded focus:ring-blue-500"
             />
-            <span className="text-sm text-gray-700">{day}</span>
+            <span className="text-sm text-gray-700">{day.substring(0, 3)}</span>
           </label>
         ))}
       </div>

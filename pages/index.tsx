@@ -65,20 +65,20 @@ export default function Home() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center">
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-[var(--primary-blue)] mb-6">
-              Smarter Shift Scheduling in Seconds
+              Smarter RA Shift Scheduling
             </h1>
             <h2 className="text-xl sm:text-2xl md:text-3xl text-[var(--primary-black)] mb-4 max-w-4xl mx-auto">
-              Automatically create smart staff schedules using ranked shift preferences — no spreadsheets, no stress.
+              Automatically create optimized RA schedules using ranked day preferences, in a fraction of the time.
             </h2>
             <p className="text-base sm:text-lg text-gray-500 italic mb-12 max-w-2xl mx-auto">
-              Perfect for resident assistant shift scheduling, student employee teams, event staff, and more.
+              Developed by a current Penn State RA to save YOU hours
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-6 mb-8">
               <Link 
                 href="/login"
                 className="bg-gradient-to-r from-[var(--primary-blue)] to-blue-600 text-white px-10 py-4 rounded-xl text-xl font-bold hover:from-blue-600 hover:to-blue-700 transition-all duration-300 text-center shadow-lg hover:shadow-xl transform hover:scale-105 hover:-translate-y-1"
               >
-                🚀 Try It Free
+                🚀 Try It
               </Link>
               <button 
                 onClick={scrollToWalkthrough}
@@ -89,8 +89,8 @@ export default function Home() {
             </div>
             {/* Platform UI Showcase */}
             <div className="flex flex-col md:flex-row justify-center items-center mt-8 mb-24 space-y-4 md:space-y-0 md:space-x-4">
-              <img src="/roster-ui.jpg" alt="Roster Management UI" className="w-full md:w-1/2 rounded-lg shadow-md" />
-              <img src="/schedule-ui.jpg" alt="Schedule Generation UI" className="w-full md:w-1/2 rounded-lg shadow-md" />
+              <img src="/roster-ui.png" alt="Roster Management UI" className="w-full md:w-1/2 rounded-lg shadow-md" />
+              <img src="/schedule-ui.png" alt="Schedule Generation UI" className="w-full md:w-1/2 rounded-lg shadow-md" />
             </div>
           </div>
         </div>
@@ -116,7 +116,7 @@ export default function Home() {
             <div className="bg-white p-8 rounded-xl shadow-sm text-center">
               <div className="text-4xl mb-4">📤</div>
               <h3 className="text-xl font-semibold text-[var(--primary-black)] mb-4">Shareable & Exportable</h3>
-              <p className="text-gray-600 leading-relaxed">Download polished schedules or instantly share with your team — all in one click.</p>
+              <p className="text-gray-600 leading-relaxed">Download generated schedules to Excel - all in one click.</p>
             </div>
           </div>
         </div>
@@ -172,7 +172,7 @@ export default function Home() {
                   <span className="text-white text-xl font-bold">3</span>
                 </div>
                 <h3 className="text-xl font-semibold text-[var(--primary-black)] mb-4">Step 3: Generate & Export</h3>
-                <p className="text-gray-600 leading-relaxed text-lg mb-6">Create a smart schedule in one click and export to Excel or share instantly.</p>
+                <p className="text-gray-600 leading-relaxed text-lg mb-6">Create a smart schedule in one click and export to Excel instantly.</p>
               </div>
               <div className="mt-6">
                 <img 

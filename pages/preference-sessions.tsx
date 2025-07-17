@@ -34,6 +34,9 @@ export default function PreferenceSessionsPage() {
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [userId, setUserId] = useState<string>('');
   
+  // Add state for showing/hiding the create form
+  const [showCreateForm, setShowCreateForm] = useState(false);
+
   // Change these to track expanded responses per session
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const [sessionResponses, setSessionResponses] = useState<{ [sessionId: string]: EmployeeResponse[] }>({});
@@ -45,6 +48,9 @@ export default function PreferenceSessionsPage() {
   
   // Track rename values for each session
   const [renameValues, setRenameValues] = useState<{ [sessionId: string]: string }>({});
+  
+  // Track which sessions are being renamed
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
 
   // Add state for QR code modal
   const [qrCodeModal, setQrCodeModal] = useState<{
@@ -121,6 +127,8 @@ export default function PreferenceSessionsPage() {
       await fetchSessions(userId);
       setNewSessionName('');
       setExpiryDate('');
+      setSelectedDays(DAYS_OF_WEEK);
+      setShowCreateForm(false);
       setFeedbackMessage({ type: 'success', message: 'Session created successfully!' });
       setTimeout(() => setFeedbackMessage(null), 3000);
     } catch (error) {
@@ -377,7 +385,8 @@ export default function PreferenceSessionsPage() {
         )
       );
 
-      // Clear the rename input for this session
+      // Clear the rename state
+      setRenamingSessionId(null);
       setRenameValues(prev => {
         const updated = { ...prev };
         delete updated[sessionId];
@@ -392,77 +401,222 @@ export default function PreferenceSessionsPage() {
     }
   };
 
+  const downloadCSV = async (sessionId: string, sessionName: string) => {
+    try {
+      // Get responses for this session if not already loaded
+      let responses = sessionResponses[sessionId];
+      
+      if (!responses) {
+        const { data, error } = await supabase
+          .from('employee_responses')
+          .select('*')
+          .eq('session_id', sessionId)
+          .order('submitted_at', { ascending: false });
+
+        if (error) throw error;
+        responses = data || [];
+      }
+
+      if (responses.length === 0) {
+        setFeedbackMessage({ type: 'error', message: 'No responses to download' });
+        return;
+      }
+
+      // Create CSV content
+      const headers = ['Employee Name', 'Email', 'First Preference', 'Second Preference', 'Third Preference', 'Fourth Preference', 'Fifth Preference', 'Sixth Preference', 'Seventh Preference', 'Submitted At'];
+      
+      const csvRows = [
+        headers.join(','),
+        ...responses.map(response => {
+          const preferences = [...response.preferences];
+          // Pad preferences array to 7 items (max days in a week)
+          while (preferences.length < 7) {
+            preferences.push('');
+          }
+          
+          return [
+            `"${response.employee_name.replace(/"/g, '""')}"`,
+            `"${response.employee_email || ''}"`,
+            ...preferences.slice(0, 7).map(pref => `"${(pref || '').replace(/"/g, '""')}"`),
+            `"${new Date(response.submitted_at).toLocaleString()}"`
+          ].join(',');
+        })
+      ];
+
+      const csvContent = csvRows.join('\n');
+      
+      // Create and download the file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${sessionName.replace(/[^a-z0-9]/gi, '_')}_preferences.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+
+      setFeedbackMessage({ type: 'success', message: 'CSV file downloaded successfully!' });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+    } catch (error) {
+      console.error('Error downloading CSV:', error);
+      setFeedbackMessage({ type: 'error', message: 'Failed to download CSV file' });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
       <main className="container mx-auto p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto flex flex-col gap-8">
           
           {/* Page Header */}
-          <div className="bg-white rounded-2xl shadow p-8 border border-gray-200">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Employee Preference Collection</h1>
-            <p className="text-gray-600">Create forms to collect employee schedule preferences</p>
-          </div>
-
-          {/* Create New Session */}
-          <div className="bg-white rounded-2xl shadow p-8 border border-gray-200">
-            <h2 className="text-2xl font-bold mb-6">Create New Collection Session</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Session Name
-                </label>
-                <input
-                  type="text"
-                  value={newSessionName}
-                  onChange={e => setNewSessionName(e.target.value)}
-                  placeholder="e.g., March 2024 Schedule Preferences"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Expiry Date (Optional)
-                </label>
-                <input
-                  type="date"
-                  value={expiryDate}
-                  onChange={e => setExpiryDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue"
-                />
-              </div>
-            </div>
-
-            <div className="mb-6">
-              <DaySelector selectedDays={selectedDays} onChange={setSelectedDays} />
-            </div>
-
-            <button
-              onClick={handleCreateSession}
-              disabled={loading}
-              className="bg-psu-blue text-white px-4 py-2 rounded font-semibold hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? 'Creating...' : 'Create Session'}
-            </button>
-
-            {feedbackMessage && (
-              <div className={`mt-4 p-3 rounded ${feedbackMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                {feedbackMessage.message}
-              </div>
-            )}
+          <div className="bg-white rounded-xl shadow p-6 border border-gray-200">
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">Employee Preference Collection</h1>
+            <p className="text-gray-600 text-sm">Create forms to collect employee schedule preferences</p>
           </div>
 
           {/* Existing Sessions */}
-          <div className="bg-white rounded-2xl shadow border border-gray-200 overflow-hidden">
-            <div className="px-8 py-6 border-b border-gray-200">
-              <h2 className="text-2xl font-bold">Your Collection Sessions</h2>
-              {sessions.length > 0 && (
-                <p className="text-sm text-gray-600 mt-1">
-                  {sessions.length} session{sessions.length !== 1 ? 's' : ''} created
-                </p>
-              )}
+          <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold">Your Collection Sessions</h2>
+                  {sessions.length > 0 && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      {sessions.length} session{sessions.length !== 1 ? 's' : ''} created
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowCreateForm(!showCreateForm)}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-psu-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-psu-blue transition-colors"
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  Create New Session
+                </button>
+              </div>
             </div>
+
+            {/* Collapsible Create Form */}
+            {showCreateForm && (
+              <div className="border-b border-gray-200 rounded-b-xl">
+                <div className="px-6 py-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-lg font-semibold text-gray-900">Create New Collection Session</h3>
+                    <button
+                      onClick={() => {
+                        setShowCreateForm(false);
+                        setNewSessionName('');
+                        setExpiryDate('');
+                        setSelectedDays(DAYS_OF_WEEK);
+                      }}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                      title="Close"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Session Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Session Name
+                      </label>
+                      <input
+                        type="text"
+                        value={newSessionName}
+                        onChange={e => setNewSessionName(e.target.value)}
+                        placeholder="e.g., March 2024 Schedule Preferences"
+                        className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue"
+                      />
+                    </div>
+                    
+                    {/* Expiry Date */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Expiry Date (Optional)
+                      </label>
+                      <input
+                        type="date"
+                        value={expiryDate}
+                        onChange={e => setExpiryDate(e.target.value)}
+                        className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-psu-blue"
+                      />
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-col">
+                      <label className="block text-sm font-medium text-gray-700 mb-2 opacity-0">
+                        Actions
+                      </label>
+                      <div className="flex space-x-3 h-10">
+                        <button
+                          onClick={handleCreateSession}
+                          disabled={loading}
+                          className="flex-1 h-full bg-psu-blue text-white px-4 rounded font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center"
+                        >
+                          {loading ? 'Creating...' : 'Create'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowCreateForm(false);
+                            setNewSessionName('');
+                            setExpiryDate('');
+                            setSelectedDays(DAYS_OF_WEEK);
+                          }}
+                          className="h-full px-4 bg-red-600 text-white rounded font-semibold hover:bg-red-700 transition-colors flex items-center justify-center"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Day Selector */}
+                  <div className="mt-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Available Days
+                    </label>
+                    <div className="border border-gray-200 rounded-lg p-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                        {DAYS_OF_WEEK.map(day => (
+                          <label key={day} className="flex items-center space-x-2 p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedDays.includes(day)}
+                              onChange={() => {
+                                const newSelectedDays = selectedDays.includes(day)
+                                  ? selectedDays.filter(d => d !== day)
+                                  : [...selectedDays, day];
+                                const orderedSelectedDays = DAYS_OF_WEEK.filter(d => newSelectedDays.includes(d));
+                                setSelectedDays(orderedSelectedDays);
+                              }}
+                              className="form-checkbox h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-700 font-medium">{day.substring(0, 3)}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {selectedDays.length === 0 && (
+                        <p className="text-sm text-red-500 mt-3">
+                          Please select at least one day for the schedule.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {feedbackMessage && (
+                    <div className={`mt-4 p-3 rounded ${feedbackMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {feedbackMessage.message}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             
             {sessions.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
@@ -500,28 +654,77 @@ export default function PreferenceSessionsPage() {
                           </td>
                           <td className="px-6 py-4">
                             <div>
-                              <div className="text-sm font-semibold text-gray-900 mb-2">{session.name}</div>
-                              <div className="text-xs text-gray-500 mb-2">
+                              <div className="flex items-center gap-2 mb-2">
+                                {renamingSessionId === session.id ? (
+                                  <>
+                                    <input
+                                      type="text"
+                                      value={renameValues[session.id] !== undefined ? renameValues[session.id] : session.name}
+                                      onChange={e => setRenameValues(prev => ({ ...prev, [session.id]: e.target.value }))}
+                                      className="text-sm font-semibold text-gray-900 bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-psu-blue focus:border-transparent"
+                                      autoFocus
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          handleRenameSession(session.id);
+                                        } else if (e.key === 'Escape') {
+                                          setRenamingSessionId(null);
+                                          setRenameValues(prev => {
+                                            const updated = { ...prev };
+                                            delete updated[session.id];
+                                            return updated;
+                                          });
+                                        }
+                                      }}
+                                    />
+                                    <button
+                                      onClick={() => handleRenameSession(session.id)}
+                                      className="p-1 text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors"
+                                      title="Save"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setRenamingSessionId(null);
+                                        setRenameValues(prev => {
+                                          const updated = { ...prev };
+                                          delete updated[session.id];
+                                          return updated;
+                                        });
+                                      }}
+                                      className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                                      title="Cancel"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="text-sm font-semibold text-gray-900">{session.name}</div>
+                                    <button
+                                      onClick={() => {
+                                        setRenamingSessionId(session.id);
+                                        setRenameValues(prev => ({ ...prev, [session.id]: session.name }));
+                                      }}
+                                      className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                                      title="Rename session"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                      </svg>
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-500">
                                 Created {new Date(session.created_at).toLocaleDateString()}
                                 {session.expires_at && (
                                   <span> • Expires {new Date(session.expires_at).toLocaleDateString()}</span>
                                 )}
-                              </div>
-                              {/* Rename functionality */}
-                              <div className="flex gap-2 items-center">
-                                <input
-                                  type="text"
-                                  value={renameValues[session.id] || ''}
-                                  onChange={e => setRenameValues(prev => ({ ...prev, [session.id]: e.target.value }))}
-                                  placeholder="Enter new name"
-                                  className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-psu-blue"
-                                />
-                                <button
-                                  onClick={() => handleRenameSession(session.id)}
-                                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-                                >
-                                  Rename
-                                </button>
                               </div>
                             </div>
                           </td>
@@ -553,64 +756,84 @@ export default function PreferenceSessionsPage() {
                             </span>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex justify-center space-x-2">
-                              <button
-                                onClick={() => copyToClipboard(generateShareableLink(session.id))}
-                                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-psu-blue transition-colors"
-                                title="Copy shareable link"
-                              >
-                                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                                Copy Link
-                              </button>
-                              
-                              <button
-                                onClick={() => downloadQRCode(session.id, session.name)}
-                                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-psu-blue transition-colors"
-                                title="Download QR code"
-                              >
-                                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                QR Code
-                              </button>
-                              
-                              {(session.response_count || 0) > 0 && (
+                            <div className="flex flex-col space-y-2">
+                              {/* Row 1: Primary actions - larger and more prominent */}
+                              <div className="flex justify-center space-x-2">
+                                {(session.response_count || 0) > 0 && (
+                                  <button
+                                    onClick={() => toggleResponses(session.id)}
+                                    disabled={loadingResponses === session.id}
+                                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
+                                    title={expandedSessionId === session.id ? 'Hide responses' : 'View responses'}
+                                  >
+                                    {loadingResponses === session.id ? (
+                                      <>
+                                        <svg className="animate-spin w-4 h-4 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Loading...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={expandedSessionId === session.id ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
+                                        </svg>
+                                        {expandedSessionId === session.id ? 'Hide Results' : 'View Results'}
+                                      </>
+                                    )}
+                                  </button>
+                                )}
+                                
                                 <button
-                                  onClick={() => toggleResponses(session.id)}
-                                  disabled={loadingResponses === session.id}
-                                  className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 transition-colors"
+                                  onClick={() => toggleSessionStatus(session.id, session.is_active)}
+                                  className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white transition-colors ${
+                                    session.is_active 
+                                      ? 'bg-red-600 hover:!bg-red-700 focus:ring-red-500' 
+                                      : 'bg-green-600 hover:!bg-green-700 focus:ring-green-500'
+                                  } focus:outline-none focus:ring-2 focus:ring-offset-2`}
                                 >
-                                  {loadingResponses === session.id ? (
-                                    <>
-                                      <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                      </svg>
-                                      Loading...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={expandedSessionId === session.id ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
-                                      </svg>
-                                      {expandedSessionId === session.id ? 'Hide' : 'View'} Responses
-                                    </>
-                                  )}
+
+                                  {session.is_active ? 'Stop Collecting' : 'Start Collecting'}
                                 </button>
-                              )}
+                              </div>
                               
-                              <button
-                                onClick={() => toggleSessionStatus(session.id, session.is_active)}
-                                className={`inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white transition-colors ${
-                                  session.is_active 
-                                    ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' 
-                                    : 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
-                                } focus:outline-none focus:ring-2 focus:ring-offset-2`}
-                              >
-                                {session.is_active ? 'Deactivate' : 'Activate'}
-                              </button>
+                              {/* Row 2: Secondary actions - smaller sharing/export functions */}
+                              <div className="flex justify-center space-x-1">
+                                <button
+                                  onClick={() => copyToClipboard(generateShareableLink(session.id))}
+                                  className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-psu-blue hover:text-white hover:border-psu-blue focus:outline-none focus:ring-1 focus:ring-psu-blue transition-colors"
+                                  title="Copy shareable link"
+                                >
+                                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                  Copy Link
+                                </button>
+                                
+                                <button
+                                  onClick={() => downloadQRCode(session.id, session.name)}
+                                  className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-psu-blue hover:text-white hover:border-psu-blue focus:outline-none focus:ring-1 focus:ring-psu-blue transition-colors"
+                                  title="Download QR code"
+                                >
+                                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  QR Code
+                                </button>
+                                
+                                <button
+                                  onClick={() => downloadCSV(session.id, session.name)}
+                                  disabled={(session.response_count || 0) === 0}
+                                  className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-psu-blue hover:text-white hover:border-psu-blue focus:outline-none focus:ring-1 focus:ring-psu-blue transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-gray-700 disabled:hover:border-gray-300"
+                                  title="Download preferences as spreadsheet file"
+                                >
+                                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  Export
+                                </button>
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -703,7 +926,7 @@ export default function PreferenceSessionsPage() {
                                                       i === 2 ? 'bg-purple-100 text-purple-800' :
                                                       'bg-gray-100 text-gray-800'
                                                     }`}>
-                                                      {i + 1}. {pref}
+                                                      {i + 1}. {pref.substring(0, 3)}
                                                     </span>
                                                   ))
                                                 ) : (
