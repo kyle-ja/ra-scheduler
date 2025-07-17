@@ -301,6 +301,26 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Creator Section */}
+      <div className="bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-0">
+            <div className="flex-shrink-0">
+              <img 
+                src="/website-headshot.png" 
+                alt="Creator headshot" 
+                className="w-40 h-40 object-cover"
+              />
+            </div>
+            <div className="text-center">
+              <p className="text-gray-600 italic text-lg leading-relaxed max-w-md">
+                "Watching my coordinator burn hours on shift spreadsheets showed me there had to be a better way—so I built one to give Res Life their time back" - RA Kyle
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Footer */}
       <footer className="bg-white py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center text-gray-600">
