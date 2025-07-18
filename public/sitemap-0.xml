@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:mobile="http://www.google.com/schemas/sitemap-mobile/1.0" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
-<url><loc>https://schedulebypreference.com</loc><lastmod>2025-06-30T20:15:52.872Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://schedulebypreference.com/account</loc><lastmod>2025-06-30T20:15:52.873Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://schedulebypreference.com/admin/feedback</loc><lastmod>2025-06-30T20:15:52.873Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://schedulebypreference.com/dashboard</loc><lastmod>2025-06-30T20:15:52.873Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://schedulebypreference.com/export</loc><lastmod>2025-06-30T20:15:52.873Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://schedulebypreference.com/login</loc><lastmod>2025-06-30T20:15:52.873Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://schedulebypreference.com/preference-sessions</loc><lastmod>2025-06-30T20:15:52.873Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://schedulebypreference.com/reset-password</loc><lastmod>2025-06-30T20:15:52.873Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
-<url><loc>https://schedulebypreference.com/roster</loc><lastmod>2025-06-30T20:15:52.873Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://schedulebypreference.com</loc><lastmod>2025-07-18T14:53:58.712Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://schedulebypreference.com/account</loc><lastmod>2025-07-18T14:53:58.713Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://schedulebypreference.com/admin/feedback</loc><lastmod>2025-07-18T14:53:58.713Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://schedulebypreference.com/dashboard</loc><lastmod>2025-07-18T14:53:58.713Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://schedulebypreference.com/export</loc><lastmod>2025-07-18T14:53:58.713Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://schedulebypreference.com/login</loc><lastmod>2025-07-18T14:53:58.713Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://schedulebypreference.com/preference-sessions</loc><lastmod>2025-07-18T14:53:58.713Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://schedulebypreference.com/reset-password</loc><lastmod>2025-07-18T14:53:58.713Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+<url><loc>https://schedulebypreference.com/roster</loc><lastmod>2025-07-18T14:53:58.713Z</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
 </urlset>
