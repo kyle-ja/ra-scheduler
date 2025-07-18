@@ -1,0 +1,65 @@
+/* Employee Color Palette for Calendar Tiles
+ * 
+ * This file contains the color definitions for employee assignments on the calendar.
+ * You can customize these colors by modifying the hex values below.
+ * Each employee will be assigned a color based on their position in the employee list.
+ * 
+ * Color Guidelines:
+ * - Use hex colors for consistency (#RRGGBB format)
+ * - Ensure sufficient contrast between background and text
+ * - Colors should be distinct enough to differentiate employees easily
+ * - The system supports up to 20 different employees with unique colors
+ * 
+ * Note: The text color (black or white) is automatically calculated based on
+ * the brightness of the background color for optimal readability.
+ */
+
+:root {
+  --employee-color-0: #FF6B6B;  /* Red */
+  --employee-color-1: #4ECDC4;  /* Teal */
+  --employee-color-2: #45B7D1;  /* Blue */
+  --employee-color-3: #96CEB4;  /* Mint Green */
+  --employee-color-4: #FFEAA7;  /* Yellow */
+  --employee-color-5: #DDA0DD;  /* Plum */
+  --employee-color-6: #98D8C8;  /* Turquoise */
+  --employee-color-7: #F7DC6F;  /* Light Yellow */
+  --employee-color-8: #BB8FCE;  /* Light Purple */
+  --employee-color-9: #85C1E9;  /* Light Blue */
+  --employee-color-10: #F8C471; /* Orange */
+  --employee-color-11: #82E0AA; /* Light Green */
+  --employee-color-12: #F1948A; /* Light Red */
+  --employee-color-13: #AED6F1; /* Sky Blue */
+  --employee-color-14: #D7BDE2; /* Lavender */
+  --employee-color-15: #A9DFBF; /* Pale Green */
+  --employee-color-16: #F9E79F; /* Pale Yellow */
+  --employee-color-17: #F5B7B1; /* Pink */
+  --employee-color-18: #A3E4D7; /* Aqua */
+  --employee-color-19: #D5A6BD; /* Dusty Rose */
+}
+
+/* Alternative Color Palette (Uncomment to use)
+ * More vibrant/saturated colors:
+ 
+:root {
+  --employee-color-0: #E74C3C;  -- Bright Red --
+  --employee-color-1: #1ABC9C;  -- Bright Teal --
+  --employee-color-2: #3498DB;  -- Bright Blue --
+  --employee-color-3: #2ECC71;  -- Bright Green --
+  --employee-color-4: #F39C12;  -- Bright Orange --
+  --employee-color-5: #9B59B6;  -- Bright Purple --
+  --employee-color-6: #E67E22;  -- Dark Orange --
+  --employee-color-7: #F1C40F;  -- Bright Yellow --
+  --employee-color-8: #8E44AD;  -- Dark Purple --
+  --employee-color-9: #2980B9;  -- Dark Blue --
+  --employee-color-10: #27AE60; -- Dark Green --
+  --employee-color-11: #D35400; -- Burnt Orange --
+  --employee-color-12: #C0392B; -- Dark Red --
+  --employee-color-13: #16A085; -- Dark Teal --
+  --employee-color-14: #7F8C8D; -- Gray --
+  --employee-color-15: #34495E; -- Dark Gray --
+  --employee-color-16: #E91E63; -- Pink --
+  --employee-color-17: #00BCD4; -- Cyan --
+  --employee-color-18: #795548; -- Brown --
+  --employee-color-19: #607D8B; -- Blue Gray --
+}
+*/ 

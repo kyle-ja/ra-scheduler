@@ -8,6 +8,31 @@ import * as XLSX from 'xlsx';
 import { differenceInCalendarDays, addDays, isWithinInterval } from "date-fns";
 import SmoothProgressBar from '../components/SmoothProgressBar';
 
+// Employee Color Palette - 20 distinct colors for easy visual identification
+// You can modify these colors to suit your preferences
+const EMPLOYEE_COLORS = [
+  '#FF6B6B', // Red
+  '#4ECDC4', // Teal
+  '#45B7D1', // Blue
+  '#96CEB4', // Mint Green
+  '#FFEAA7', // Yellow
+  '#DDA0DD', // Plum
+  '#98D8C8', // Turquoise
+  '#F7DC6F', // Light Yellow
+  '#BB8FCE', // Light Purple
+  '#85C1E9', // Light Blue
+  '#F8C471', // Orange
+  '#82E0AA', // Light Green
+  '#F1948A', // Light Red
+  '#AED6F1', // Sky Blue
+  '#D7BDE2', // Lavender
+  '#A9DFBF', // Pale Green
+  '#F9E79F', // Pale Yellow
+  '#F5B7B1', // Pink
+  '#A3E4D7', // Aqua
+  '#D5A6BD', // Dusty Rose
+];
+
 // Add custom styles for excluded dates
 const excludedDateStyles = `
   .excluded-date {
@@ -29,6 +54,46 @@ if (typeof document !== 'undefined') {
   const styleSheet = document.createElement('style');
   styleSheet.textContent = excludedDateStyles;
   document.head.appendChild(styleSheet);
+}
+
+// Function to generate dynamic CSS for employee colors
+const generateEmployeeColorStyles = () => {
+  const cssRules = EMPLOYEE_COLORS.map((color, index) => {
+    // Calculate if we need light or dark text based on color brightness
+    const hex = color.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    const textColor = brightness > 128 ? '#000000' : '#FFFFFF';
+    
+    return `
+      .employee-color-${index} {
+        background-color: ${color} !important;
+        color: ${textColor} !important;
+        border-color: ${color} !important;
+      }
+      .employee-color-${index}:hover {
+        background-color: ${color} !important;
+        filter: brightness(0.9) !important;
+      }
+      .employee-color-${index} .employee-name-display {
+        color: ${textColor} !important;
+      }
+      .employee-color-${index} span {
+        color: ${textColor} !important;
+      }
+    `;
+  }).join('\n');
+  
+  return cssRules;
+};
+
+// Inject employee color styles
+if (typeof document !== 'undefined') {
+  const employeeStyleSheet = document.createElement('style');
+  employeeStyleSheet.textContent = generateEmployeeColorStyles();
+  document.head.appendChild(employeeStyleSheet);
 }
 
 /** Inclusive list of every calendar day between two dates. */
@@ -159,6 +224,55 @@ export default function RosterPage() {
   // Add new state for preference sessions
   const [preferenceSessions, setPreferenceSessions] = useState<PreferenceSessionForRoster[]>([]);
 
+  // State for employee filtering in calendar display
+  const [visibleEmployees, setVisibleEmployees] = useState<Set<string>>(new Set());
+
+  // Create employee color mapping - maps employee name to color index
+  const employeeColorMap = useMemo(() => {
+    const validEmployees = employees.filter(emp => emp.name && emp.name.trim() !== '');
+    const colorMap: Record<string, number> = {};
+    validEmployees.forEach((employee, index) => {
+      if (employee.name) {
+        colorMap[employee.name] = index % EMPLOYEE_COLORS.length;
+      }
+    });
+    return colorMap;
+  }, [employees]);
+
+  // Function to get employee color class
+  const getEmployeeColorClass = (employeeName: string): string => {
+    const colorIndex = employeeColorMap[employeeName];
+    return colorIndex !== undefined ? `employee-color-${colorIndex}` : 'range-day';
+  };
+
+  // Function to toggle employee visibility in calendar
+  const toggleEmployeeVisibility = (employeeName: string) => {
+    setVisibleEmployees(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(employeeName)) {
+        newSet.delete(employeeName);
+      } else {
+        newSet.add(employeeName);
+      }
+      return newSet;
+    });
+  };
+
+  // Function to show all employees
+  const showAllEmployees = () => {
+    const validEmployeeNames = employees
+      .filter(emp => emp.name && emp.name.trim() !== '')
+      .map(emp => emp.name);
+    setVisibleEmployees(new Set(validEmployeeNames));
+  };
+
+  // Function to hide all employees
+  const hideAllEmployees = () => {
+    setVisibleEmployees(new Set());
+  };
+
+
+
   const inRangeSet = useMemo(() => {
     if (!startDate || !endDate) { // startDate and endDate are "YYYY-MM-DD"
       return new Set<string>();
@@ -193,6 +307,16 @@ export default function RosterPage() {
   const [schedule, setSchedule] = useState<
     { date: string; employee: string; weekday: number }[] | null
   >(null);
+
+  // Initialize visible employees when schedule is generated
+  useEffect(() => {
+    if (schedule && schedule.length > 0) {
+      const validEmployeeNames = employees
+        .filter(emp => emp.name && emp.name.trim() !== '')
+        .map(emp => emp.name);
+      setVisibleEmployees(new Set(validEmployeeNames));
+    }
+  }, [schedule, employees]);
 
   // Shows a spinner or error message later
   const [loading, setLoading] = useState(false);
@@ -2030,11 +2154,24 @@ export default function RosterPage() {
                             {exclusionTitle}
                           </p>
                         );
-                      } else if (isInRange && isSchedulableDayOfWeek && employeeName && !isExcluded) {
+                      } else if (isInRange && isSchedulableDayOfWeek && employeeName && !isExcluded && visibleEmployees.has(employeeName)) {
+                      // Get the appropriate text color for this employee
+                      const colorIndex = employeeColorMap[employeeName];
+                      let textColor = '#ffffff'; // default white
+                      if (colorIndex !== undefined) {
+                        const bgColor = EMPLOYEE_COLORS[colorIndex];
+                        const hex = bgColor.replace('#', '');
+                        const r = parseInt(hex.substr(0, 2), 16);
+                        const g = parseInt(hex.substr(2, 2), 16);
+                        const b = parseInt(hex.substr(4, 2), 16);
+                        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                        textColor = brightness > 128 ? '#000000' : '#FFFFFF';
+                      }
+                      
                       employeeBadgeContent = (
                         <p 
-                          className="text-xs text-white p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
-                          style={{ fontSize: '0.95rem' }}
+                          className="employee-name-display text-xs p-0.5 mt-0.5 rounded font-semibold leading-tight truncate"
+                          style={{ fontSize: '0.75rem', color: textColor }}
                           title={employeeName}
                         >
                           {employeeName}
@@ -2042,9 +2179,30 @@ export default function RosterPage() {
                       );
                     }
 
+                      // Calculate appropriate text color for day number
+                      let dayNumberColor = '#001E44'; // default blue
+                      if (isInRange && isSchedulableDayOfWeek && employeeName && !isExcluded && visibleEmployees.has(employeeName)) {
+                        const colorIndex = employeeColorMap[employeeName];
+                        if (colorIndex !== undefined) {
+                          const bgColor = EMPLOYEE_COLORS[colorIndex];
+                          const hex = bgColor.replace('#', '');
+                          const r = parseInt(hex.substr(0, 2), 16);
+                          const g = parseInt(hex.substr(2, 2), 16);
+                          const b = parseInt(hex.substr(4, 2), 16);
+                          const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                          dayNumberColor = brightness > 128 ? '#000000' : '#FFFFFF';
+                        } else {
+                          dayNumberColor = '#ffffff'; // default white for assigned days
+                        }
+                      } else if (isInRange && isSchedulableDayOfWeek) {
+                        dayNumberColor = '#ffffff'; // white for unassigned in-range days (or filtered out employees)
+                      } else if (isExcluded) {
+                        dayNumberColor = '#9ca3af'; // gray for excluded days
+                      }
+
                       const dayNumberComponent = (
                         <span 
-                          style={{ fontWeight: 500 }}
+                          style={{ fontWeight: 500, color: dayNumberColor }}
                           title={isExcluded ? (exclusionTitle || "Excluded Date") : undefined}
                         >
                           {day}
@@ -2077,14 +2235,21 @@ export default function RosterPage() {
 
                   const dateString = date.toDateString();
                   const dayName = getDayName(date);
-                    const excludedDatesSet = getExcludedDatesSet(excludedDates);
+                  const excludedDatesSet = getExcludedDatesSet(excludedDates);
+                  const dateStr = date.toISOString().slice(0, 10);
+                  const employeeName = scheduleMap[dateStr];
 
-                    // If the date is excluded, return a special class
-                    if (excludedDatesSet.has(dateString)) {
-                      return 'excluded-date';
-                    }
+                  // If the date is excluded, return a special class
+                  if (excludedDatesSet.has(dateString)) {
+                    return 'excluded-date';
+                  }
 
-                  // Apply 'range-day' style only if the date is in the selected range AND its day of the week is schedulable
+                  // If someone is assigned to this date and they are visible, use their specific color
+                  if (inRangeSet.has(dateString) && schedulableDays.includes(dayName) && employeeName && visibleEmployees.has(employeeName)) {
+                    return getEmployeeColorClass(employeeName);
+                  }
+
+                  // Apply default 'range-day' style for unassigned days in range
                   if (inRangeSet.has(dateString) && schedulableDays.includes(dayName)) {
                     return 'range-day';
                   }
@@ -2094,6 +2259,92 @@ export default function RosterPage() {
                 className="react-calendar-override"
               />
             </div>
+            
+            {/* Employee Color Legend */}
+            {schedule && schedule.length > 0 && employees.some(emp => emp.name && emp.name.trim() !== '') && (
+              <div className="bg-white shadow rounded-lg p-4 w-full max-w-full overflow-x-auto mb-8">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold">Employee Filter & Color Legend</h2>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={showAllEmployees}
+                      className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                    >
+                      Show All
+                    </button>
+                    <button
+                      onClick={hideAllEmployees}
+                      className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
+                    >
+                      Hide All
+                    </button>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-600 mb-4">
+                  Click on employee names to show/hide their assigned days on the calendar. This only affects the display - exports will include all data.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {employees
+                    .filter(emp => emp.name && emp.name.trim() !== '')
+                    .map((employee, index) => {
+                      const colorIndex = index % EMPLOYEE_COLORS.length;
+                      const color = EMPLOYEE_COLORS[colorIndex];
+                      const hex = color.replace('#', '');
+                      const r = parseInt(hex.substr(0, 2), 16);
+                      const g = parseInt(hex.substr(2, 2), 16);
+                      const b = parseInt(hex.substr(4, 2), 16);
+                      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                      const textColor = brightness > 128 ? '#000000' : '#FFFFFF';
+                      const isVisible = visibleEmployees.has(employee.name);
+                      
+                      return (
+                        <div
+                          key={employee.id}
+                          onClick={() => toggleEmployeeVisibility(employee.name)}
+                          className={`flex items-center space-x-2 p-3 rounded-lg border-2 cursor-pointer transition-all duration-200 transform hover:scale-105 ${
+                            isVisible 
+                              ? 'border-opacity-100 shadow-md' 
+                              : 'border-opacity-30 opacity-50 grayscale'
+                          }`}
+                          style={{ 
+                            backgroundColor: isVisible ? color : '#f3f4f6', 
+                            color: isVisible ? textColor : '#6b7280', 
+                            borderColor: color 
+                          }}
+                          title={`Click to ${isVisible ? 'hide' : 'show'} ${employee.name}'s assignments`}
+                        >
+                          <div 
+                            className={`w-4 h-4 rounded-full border-2 transition-all ${
+                              isVisible ? '' : 'opacity-50'
+                            }`}
+                            style={{ 
+                              backgroundColor: isVisible ? color : '#d1d5db', 
+                              borderColor: isVisible ? textColor : '#9ca3af' 
+                            }}
+                          ></div>
+                          <span className={`text-sm font-medium truncate transition-all ${
+                            isVisible ? 'font-semibold' : 'font-normal'
+                          }`} title={employee.name}>
+                            {employee.name}
+                          </span>
+                          <div className="ml-auto">
+                            {isVisible ? (
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+            
             {/* Schedule Summary full width card */}
             {schedule && schedule.length > 0 && scheduleSummaryData.length > 0 && (
               <div className="bg-white shadow rounded-lg p-4 w-full max-w-full overflow-x-auto">

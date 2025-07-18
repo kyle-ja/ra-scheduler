@@ -11,7 +11,7 @@
   color: #475569 !important;          /* slate-600 */
 }
 
-/* highlight days that are inside the selected range */
+/* highlight days that are inside the selected range (unassigned days) */
 .range-day {
   background: #001E44 !important;     /* primary blue */
   color: #ffffff !important;
@@ -30,5 +30,14 @@
   color: #ffffff !important;      /* Ensure text is white */
   opacity: 1 !important;          /* Ensure full opacity */
   border-radius: 0.375rem !important; /* Apply rounded corners here too */
+}
+
+/* Employee color classes should override range-day */
+.react-calendar__tile[class*="employee-color-"] {
+  border-radius: 0.375rem !important; /* Apply rounded corners to employee colored tiles */
+}
+
+.react-calendar__tile[class*="employee-color-"].react-calendar__tile--neighboringMonth {
+  opacity: 1 !important; /* Ensure full opacity for neighboring month employee colored tiles */
 }
 /* ========== end overrides ========== */ 
