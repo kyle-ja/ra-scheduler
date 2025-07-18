@@ -323,6 +323,8 @@ export default function RosterPage() {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [lastGenerationTime, setLastGenerationTime] = useState<number | null>(null);
 
   // Calculate total number of schedulable days
   const totalSchedulableDays = useMemo(() => {
@@ -738,7 +740,7 @@ export default function RosterPage() {
       setCurrentRosterName(selectedRoster.name);
       setCurrentRosterId(selectedRoster.id);
       setSchedulableDays(selectedRoster.schedulable_days || DAYS_OF_WEEK);
-      setSchedule(null);
+      clearScheduleAndTime();
       setRenameValue('');
     }
   };
@@ -773,7 +775,7 @@ export default function RosterPage() {
     }
     // Clear schedule if it exists
     if (schedule) {
-      setSchedule(null);
+      clearScheduleAndTime();
     }
   };
 
@@ -783,7 +785,7 @@ export default function RosterPage() {
     validateDates(startDate, newEndDate);
     // Clear schedule if it exists
     if (schedule) {
-      setSchedule(null);
+      clearScheduleAndTime();
     }
   };
 
@@ -941,7 +943,7 @@ export default function RosterPage() {
     setSelectedRosterId('');
     setNewRosterName('');
     setSchedulableDays(DAYS_OF_WEEK);
-    setSchedule(null);
+    clearScheduleAndTime();
     setRenameValue('');
   };
 
@@ -974,13 +976,33 @@ export default function RosterPage() {
     });
   };
 
+  const clearScheduleAndTime = () => {
+    setSchedule(null);
+    setLastGenerationTime(null);
+  };
+
+  const handleCancelGeneration = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+      setLoading(false);
+      setError('Schedule generation was cancelled.');
+      setGenerationProgress(0);
+      setElapsedTime(0);
+    }
+  };
+
   const handleGenerateSchedule = async () => {
     let timerInterval: NodeJS.Timeout | undefined;
+    const controller = new AbortController();
+    setAbortController(controller);
+    
     try {
       setLoading(true);
       setError(null);
       setGenerationProgress(0);
       setElapsedTime(0);
+      setLastGenerationTime(null);
       
       // Start the timer
       const startTime = Date.now();
@@ -991,6 +1013,7 @@ export default function RosterPage() {
       if (!startDate || !endDate) {
         setError("Please select both a start and end date.");
         setLoading(false);
+        setAbortController(null);
         clearInterval(timerInterval);
         return;
       }
@@ -998,6 +1021,7 @@ export default function RosterPage() {
       if (schedulableDays.length === 0) {
         setError("No schedulable days selected. Please select at least one day of the week to schedule.");
         setLoading(false);
+        setAbortController(null);
         clearInterval(timerInterval);
         return;
       }
@@ -1007,6 +1031,7 @@ export default function RosterPage() {
       if (validEmployees.length > MAX_EMPLOYEES) {
         setError(`Cannot generate schedule with more than ${MAX_EMPLOYEES} employees. Please reduce the number of employees.`);
         setLoading(false);
+        setAbortController(null);
         clearInterval(timerInterval);
         return;
       }
@@ -1014,6 +1039,7 @@ export default function RosterPage() {
       if (validEmployees.length === 0) {
         setError("No employees with names found. Please add at least one employee with a name.");
         setLoading(false);
+        setAbortController(null);
         clearInterval(timerInterval);
         return;
       }
@@ -1025,6 +1051,7 @@ export default function RosterPage() {
       if (incompleteRangeExclusions) {
         setError("Please complete all date range exclusions by providing both start and end dates.");
         setLoading(false);
+        setAbortController(null);
         clearInterval(timerInterval);
         return;
       }
@@ -1087,6 +1114,7 @@ export default function RosterPage() {
       if (dates.length === 0) {
         setError("No schedulable days fall within the selected date range based on your day-of-week selection and excluded dates, or the date range itself is invalid. Please adjust your selections.");
         setLoading(false);
+        setAbortController(null);
         clearInterval(timerInterval);
         return;
       }
@@ -1100,6 +1128,7 @@ export default function RosterPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employees: employeeData, dates, max_consecutive_days: maxConsecutiveDays }),
+        signal: controller.signal,
       });
 
       setGenerationProgress(70);
@@ -1120,20 +1149,31 @@ export default function RosterPage() {
       setSchedule(json);
       console.log('Received schedule:', json);
       setGenerationProgress(100);
+      
+      // Store the generation time for display (capture current elapsed time)
+      const finalElapsedTime = Math.floor((Date.now() - startTime) / 1000);
+      setLastGenerationTime(finalElapsedTime);
     } catch (err: any) {
       console.error(err);
-      // Show a user-friendly error message if the error contains backend/traceback details
-      let userMessage = 'A schedule could not be generated with the current settings. This is usually because there are not enough available days, too many restrictions, or not enough employees to cover the schedule. Please adjust your date range, excluded dates, or employee preferences and try again.';
-      if (err && typeof err.message === 'string') {
-        // If the error message is a simple string without traceback, show it
-        if (!err.message.includes('Traceback') && !err.message.includes('RuntimeError')) {
-          userMessage = err.message;
+      
+      // Handle abort error separately
+      if (err.name === 'AbortError') {
+        setError('Schedule generation was cancelled.');
+      } else {
+        // Show a user-friendly error message if the error contains backend/traceback details
+        let userMessage = 'A schedule could not be generated with the current settings. This is usually because there are not enough available days, too many restrictions, or not enough employees to cover the schedule. Please adjust your date range, excluded dates, or employee preferences and try again.';
+        if (err && typeof err.message === 'string') {
+          // If the error message is a simple string without traceback, show it
+          if (!err.message.includes('Traceback') && !err.message.includes('RuntimeError')) {
+            userMessage = err.message;
+          }
         }
+        setError(userMessage);
       }
-      setError(userMessage);
-      setSchedule(null); // Clear any existing schedule on error
+      clearScheduleAndTime(); // Clear any existing schedule on error
     } finally {
       setLoading(false);
+      setAbortController(null);
       clearInterval(timerInterval);
     }
   };
@@ -1324,21 +1364,21 @@ export default function RosterPage() {
   // Add effect to clear schedule when excluded dates change
   useEffect(() => {
     if (schedule) {
-      setSchedule(null);
+      clearScheduleAndTime();
     }
   }, [excludedDates]);
 
   // Add effect to clear schedule when schedulable days change
   useEffect(() => {
     if (schedule) {
-      setSchedule(null);
+      clearScheduleAndTime();
     }
   }, [schedulableDays]);
 
   // Add effect to clear schedule when employees/preferences change
   useEffect(() => {
     if (schedule) {
-      setSchedule(null);
+      clearScheduleAndTime();
     }
   }, [employees]);
 
@@ -1462,6 +1502,15 @@ export default function RosterPage() {
     }
   }, [feedbackMessage]);
 
+  // Cleanup abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (abortController) {
+        abortController.abort();
+      }
+    };
+  }, [abortController]);
+
   // Add new function to load preference session responses
   const handleLoadPreferenceSession = async (sessionId: string) => {
     try {
@@ -1496,7 +1545,7 @@ export default function RosterPage() {
       setCurrentRosterName(`${selectedSession.name} (${employeesFromResponses.length} responses)`);
       setCurrentRosterId(''); // This is from a session, not a saved roster
       setSchedulableDays(selectedSession.schedulable_days);
-      setSchedule(null);
+      clearScheduleAndTime();
       
       if (wasLimited) {
         setFeedbackMessage({ 
@@ -2067,6 +2116,14 @@ export default function RosterPage() {
                   {loading ? 'Generating…' : `Generate Schedule for ${totalSchedulableDays} Days`}
                 </button>
                 {loading && (
+                  <button
+                    className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+                    onClick={handleCancelGeneration}
+                  >
+                    Cancel
+                  </button>
+                )}
+                {loading && (
                   <div className="flex items-center gap-4">
                     <SmoothProgressBar taskComplete={!loading} duration={10} />
                     <span className="text-sm text-gray-600">
@@ -2082,6 +2139,16 @@ export default function RosterPage() {
                   >
                     Export to Excel
                   </button>
+                )}
+                {schedule && lastGenerationTime !== null && (
+                  <div className="flex items-center text-sm text-gray-600 bg-green-50 px-3 py-2 rounded-md border border-green-200">
+                    <svg className="w-4 h-4 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-green-700 font-medium">
+                      Schedule generated in {lastGenerationTime}s
+                    </span>
+                  </div>
                 )}
               </div>
               {error && (
