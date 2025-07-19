@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import DaySelector from '../components/DaySelector';
 import { supabase } from '../lib/supabaseClient';
 import 'react-calendar/dist/Calendar.css';
@@ -198,6 +198,23 @@ interface PreferenceSessionForRoster {
   response_count?: number;
 }
 
+interface SavedSchedule {
+  id: string;
+  name: string;
+  user_id: string;
+  start_date: string;
+  end_date: string;
+  excluded_dates: ExclusionEntry[];
+  employees: Employee[];
+  schedulable_days: DayOfWeek[];
+  max_consecutive_days: number;
+  schedule_data: { date: string; employee: string; weekday: number }[];
+  total_schedulable_days: number;
+  generation_time_seconds: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export default function RosterPage() {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
@@ -223,6 +240,13 @@ export default function RosterPage() {
   
   // Add new state for preference sessions
   const [preferenceSessions, setPreferenceSessions] = useState<PreferenceSessionForRoster[]>([]);
+
+  // State for saved schedules
+  const [savedSchedules, setSavedSchedules] = useState<SavedSchedule[]>([]);
+  const [newScheduleName, setNewScheduleName] = useState('');
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string>('');
+  const [loadingSchedule, setLoadingSchedule] = useState<boolean>(false);
+  const [showDropdown, setShowDropdown] = useState<boolean>(false);
 
   // State for employee filtering in calendar display
   const [visibleEmployees, setVisibleEmployees] = useState<Set<string>>(new Set());
@@ -478,6 +502,9 @@ export default function RosterPage() {
           })) || [];
           setPreferenceSessions(sessionsWithCounts);
         }
+
+        // Load saved schedules
+        await fetchSavedSchedules(session.user.id);
       }
     };
 
@@ -502,6 +529,199 @@ export default function RosterPage() {
       setDateSettings(data || []);
     } catch (error) {
       console.error('Error fetching date settings:', error);
+    }
+  };
+
+  const fetchSavedSchedules = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('saved_schedules')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setSavedSchedules(data || []);
+    } catch (error) {
+      console.error('Error fetching saved schedules:', error);
+    }
+  };
+
+  const handleLoadSavedSchedule = async (scheduleId: string) => {
+    const savedSchedule = savedSchedules.find(s => s.id === scheduleId);
+    if (!savedSchedule) return;
+
+    setLoadingSchedule(true);
+    
+    try {
+      // Show immediate feedback
+      setFeedbackMessage({ 
+        type: 'success', 
+        message: `Loading "${savedSchedule.name}"...` 
+      });
+
+      // Clear existing schedule and related data first
+      setSchedule(null);
+      setLastGenerationTime(null);
+      
+      // Load all data in batches with React's flushSync for immediate updates
+      React.startTransition(() => {
+        // Load all non-schedule data first
+        setStartDate(savedSchedule.start_date);
+        setEndDate(savedSchedule.end_date);
+        setExcludedDates(savedSchedule.excluded_dates);
+        setSchedulableDays(savedSchedule.schedulable_days);
+        setMaxConsecutiveDays(savedSchedule.max_consecutive_days);
+        setEmployees(savedSchedule.employees);
+        setOriginalEmployees(savedSchedule.employees);
+        
+        // Check if the loaded date settings match any saved date settings
+        const matchingSettingId = findMatchingDateSetting(
+          savedSchedule.start_date,
+          savedSchedule.end_date,
+          savedSchedule.excluded_dates
+        );
+        if (matchingSettingId) {
+          setSelectedSettingId(matchingSettingId);
+        } else {
+          setSelectedSettingId('');
+        }
+        
+        // Clear current roster state
+        setCurrentRosterName(`${savedSchedule.name} (Saved Schedule)`);
+        setCurrentRosterId('');
+        setSelectedRosterId('');
+        setSelectedScheduleId('');
+        setRenameValue('');
+        
+        // Set active start date for calendar navigation
+        if (savedSchedule.start_date) {
+          setActiveStartDate(new Date(savedSchedule.start_date));
+        }
+      });
+      
+      // Short delay to ensure React has processed the state updates
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Now load the schedule data
+      React.startTransition(() => {
+        setSchedule(savedSchedule.schedule_data);
+        setLastGenerationTime(savedSchedule.generation_time_seconds);
+      });
+
+      // Final delay to ensure everything is rendered
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      setFeedbackMessage({ 
+        type: 'success', 
+        message: `Successfully loaded "${savedSchedule.name}"` 
+      });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+    } catch (error) {
+      console.error('Error loading saved schedule:', error);
+      setFeedbackMessage({ 
+        type: 'error', 
+        message: 'Failed to load saved schedule' 
+      });
+    } finally {
+      setLoadingSchedule(false);
+    }
+  };
+
+  const handleSaveSchedule = async () => {
+    if (!newScheduleName.trim() || !userId || !schedule || !startDate || !endDate) {
+      setFeedbackMessage({ 
+        type: 'error', 
+        message: 'Please enter a schedule name and ensure you have a generated schedule to save' 
+      });
+      return;
+    }
+
+    try {
+      const newSavedSchedule = {
+        name: newScheduleName.trim(),
+        user_id: userId,
+        start_date: startDate,
+        end_date: endDate,
+        excluded_dates: excludedDates,
+        employees: employees,
+        schedulable_days: schedulableDays,
+        max_consecutive_days: maxConsecutiveDays,
+        schedule_data: schedule,
+        total_schedulable_days: totalSchedulableDays,
+        generation_time_seconds: lastGenerationTime
+      };
+
+      console.log('Attempting to save schedule:', newSavedSchedule);
+
+      const { data, error } = await supabase
+        .from('saved_schedules')
+        .insert([newSavedSchedule])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw error;
+      }
+
+      console.log('Schedule saved successfully:', data);
+      setSavedSchedules([data, ...savedSchedules]);
+      setNewScheduleName('');
+      setFeedbackMessage({ 
+        type: 'success', 
+        message: `Schedule "${data.name}" saved successfully!` 
+      });
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setFeedbackMessage(null), 3000);
+    } catch (error: any) {
+      console.error('Error saving schedule:', error);
+      setFeedbackMessage({ 
+        type: 'error', 
+        message: `Failed to save schedule: ${error.message || 'Unknown error'}` 
+      });
+    }
+  };
+
+  const handleDeleteSavedSchedule = async (scheduleId: string) => {
+    if (!scheduleId || !userId) return;
+
+    // Find the schedule name before deleting
+    const scheduleToDelete = savedSchedules.find(schedule => schedule.id === scheduleId);
+    const scheduleName = scheduleToDelete?.name || 'Schedule';
+
+    try {
+      const { error } = await supabase
+        .from('saved_schedules')
+        .delete()
+        .eq('id', scheduleId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      setSavedSchedules(savedSchedules.filter(schedule => schedule.id !== scheduleId));
+      if (selectedScheduleId === scheduleId) {
+        setSelectedScheduleId('');
+      }
+      setFeedbackMessage({ 
+        type: 'success', 
+        message: `"${scheduleName}" deleted successfully!` 
+      });
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setFeedbackMessage(null), 3000);
+    } catch (error) {
+      console.error('Error deleting saved schedule:', error);
+      setFeedbackMessage({ 
+        type: 'error', 
+        message: 'Failed to delete saved schedule. Please try again.' 
+      });
     }
   };
 
@@ -578,6 +798,39 @@ export default function RosterPage() {
       setExcludedDates(setting.excluded_dates);
       setSelectedSettingId(settingId);
     }
+  };
+
+  // Function to compare date settings and find matching saved setting
+  const findMatchingDateSetting = (startDate: string, endDate: string, excludedDates: ExclusionEntry[]): string | null => {
+    for (const setting of dateSettings) {
+      // Compare basic dates
+      if (setting.start_date !== startDate || setting.end_date !== endDate) {
+        continue;
+      }
+
+      // Compare excluded dates - they must match exactly
+      if (setting.excluded_dates.length !== excludedDates.length) {
+        continue;
+      }
+
+      // Deep compare excluded dates
+      const excludedDatesMatch = setting.excluded_dates.every((savedExclusion, index) => {
+        const loadedExclusion = excludedDates[index];
+        if (!loadedExclusion) return false;
+        
+        return (
+          savedExclusion.type === loadedExclusion.type &&
+          savedExclusion.startDate === loadedExclusion.startDate &&
+          savedExclusion.endDate === loadedExclusion.endDate &&
+          savedExclusion.title === loadedExclusion.title
+        );
+      });
+
+      if (excludedDatesMatch) {
+        return setting.id;
+      }
+    }
+    return null;
   };
 
   // Add function to check if a setting has been modified
@@ -1511,6 +1764,21 @@ export default function RosterPage() {
     };
   }, [abortController]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (showDropdown && !target.closest('.relative')) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDropdown]);
+
   // Add new function to load preference session responses
   const handleLoadPreferenceSession = async (sessionId: string) => {
     try {
@@ -2107,50 +2375,181 @@ export default function RosterPage() {
             </div>
             {/* Generate/Export buttons row */}
             <div className="flex flex-col gap-4 mb-6">
-              <div className="flex flex-row gap-4 items-center">
-                <button
-                  className="rounded bg-primary-blue px-4 py-2 text-white hover:opacity-90 disabled:opacity-50"
-                  onClick={handleGenerateSchedule}
-                  disabled={loading}
-                >
-                  {loading ? 'Generating…' : `Generate Schedule for ${totalSchedulableDays} Days`}
-                </button>
-                {loading && (
+              <div className="flex flex-row gap-4 items-center justify-between w-full">
+                {/* Left side: Generate, Cancel, Progress, Export */}
+                <div className="flex flex-row gap-4 items-center flex-1 min-w-0">
                   <button
-                    className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
-                    onClick={handleCancelGeneration}
+                    className="rounded bg-psu-blue px-4 py-2 text-white hover:opacity-90 disabled:opacity-50"
+                    onClick={handleGenerateSchedule}
+                    disabled={loading}
                   >
-                    Cancel
+                    {loading ? 'Generating…' : `Generate Schedule for ${totalSchedulableDays} Days`}
                   </button>
-                )}
-                {loading && (
-                  <div className="flex items-center gap-4">
-                    <SmoothProgressBar taskComplete={!loading} duration={10} />
-                    <span className="text-sm text-gray-600">
-                      {elapsedTime}s
-                    </span>
+                  {loading && (
+                    <button
+                      className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+                      onClick={handleCancelGeneration}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  {loading && (
+                    <div className="flex items-center gap-4">
+                      <SmoothProgressBar taskComplete={!loading} duration={50} />
+                      <span className="text-sm text-gray-600">
+                        {elapsedTime}s
+                      </span>
+                    </div>
+                  )}
+                  {schedule && schedule.length > 0 && (
+                    <button
+                      className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700"
+                      onClick={handleExportToExcel}
+                    >
+                      Export to Excel
+                    </button>
+                  )}
+                  {schedule && lastGenerationTime !== null && (
+                    <div className="flex items-center text-sm text-gray-600 bg-green-50 px-3 py-2 rounded-md border border-green-200">
+                      <svg className="w-4 h-4 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-green-700 font-medium">
+                        Schedule generated in {lastGenerationTime}s
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right side: Schedule Manager */}
+                <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm">
+                  {/* Main Input Group */}
+                  <div className="flex items-stretch">
+                    <input
+                      type="text"
+                      value={newScheduleName}
+                      onChange={e => setNewScheduleName(e.target.value)}
+                      placeholder={schedule ? "Name this schedule..." : "Create a schedule to save it"}
+                      disabled={!schedule || loadingSchedule}
+                      className={`flex-1 px-4 py-2.5 text-sm border-0 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-psu-blue focus:ring-inset ${
+                        !schedule ? 'bg-gray-50 text-gray-400 placeholder-gray-400' : 'bg-white text-gray-900 placeholder-gray-500'
+                      } ${loadingSchedule ? 'opacity-60' : ''}`}
+                      style={{ minWidth: '200px' }}
+                    />
+                    
+                    {/* Dropdown Toggle - Only show when there are saved schedules */}
+                    {savedSchedules.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowDropdown(!showDropdown)}
+                        disabled={loadingSchedule}
+                        className={`px-3 py-2.5 border-l border-gray-200 bg-gray-50 hover:bg-psu-blue focus:outline-none focus:ring-2 focus:ring-psu-blue focus:ring-inset transition-all duration-200 ${
+                          loadingSchedule ? 'opacity-60 cursor-not-allowed' : 'text-gray-600 hover:text-white'
+                        }`}
+                        title={`Load from ${savedSchedules.length} saved schedule${savedSchedules.length === 1 ? '' : 's'}`}
+                      >
+                        <svg className={`w-4 h-4 transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    )}
+                    
+                    {/* Save Button */}
+                    <button
+                      onClick={handleSaveSchedule}
+                      disabled={!schedule || !newScheduleName.trim() || loadingSchedule}
+                      className={`px-4 py-2.5 font-medium text-sm rounded-r-lg transition-all duration-200 ${
+                        schedule && newScheduleName.trim() && !loadingSchedule
+                          ? 'bg-psu-blue text-white hover:bg-blue-700 focus:ring-2 focus:ring-psu-blue focus:ring-offset-2 shadow-sm'
+                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
+                      title={!schedule ? "Generate a schedule first" : !newScheduleName.trim() ? "Enter a name to save" : "Save this schedule"}
+                    >
+                      {loadingSchedule ? (
+                        <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="m15.84 2.016.77-.866c.13-.146.26-.289.36-.44.06-.088.1-.186.1-.29 0-.264-.184-.48-.43-.48-.116 0-.224.048-.305.128l-.863.773c-.143.128-.285.26-.424.396-.1.098-.195.201-.286.308-.084.098-.163.2-.237.306-.069.099-.133.202-.192.308-.055.099-.105.202-.149.308-.042.099-.078.202-.108.308-.028.099-.05.202-.066.308-.015.099-.024.202-.026.308-.002.106.003.213.013.32z"></path>
+                        </svg>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 mr-1.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                          </svg>
+                          Save
+                        </>
+                      )}
+                    </button>
                   </div>
-                )}
-                {(startDate && endDate && employees.length > 0) && (
-                  <button
-                    className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
-                    onClick={handleExportToExcel}
-                    disabled={!startDate || !endDate || employees.length === 0}
-                  >
-                    Export to Excel
-                  </button>
-                )}
-                {schedule && lastGenerationTime !== null && (
-                  <div className="flex items-center text-sm text-gray-600 bg-green-50 px-3 py-2 rounded-md border border-green-200">
-                    <svg className="w-4 h-4 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-green-700 font-medium">
-                      Schedule generated in {lastGenerationTime}s
-                    </span>
-                  </div>
-                )}
+
+                  {/* Enhanced Dropdown Menu */}
+                  {showDropdown && savedSchedules.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-30 overflow-hidden">
+                      {/* Header */}
+                      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-700">Saved Schedules</span>
+                          <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded-full">
+                            {savedSchedules.length}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {/* Schedule List */}
+                      <div className="max-h-64 overflow-y-auto">
+                        {savedSchedules.map((savedSchedule, index) => (
+                          <div
+                            key={savedSchedule.id}
+                            className={`group flex items-center justify-between px-4 py-3 hover:bg-blue-50 cursor-pointer transition-colors duration-150 ${
+                              index !== savedSchedules.length - 1 ? 'border-b border-gray-100' : ''
+                            }`}
+                            onClick={() => {
+                              handleLoadSavedSchedule(savedSchedule.id);
+                              setShowDropdown(false);
+                            }}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center space-x-3">
+                                <div className="flex-shrink-0">
+                                  <svg className="w-5 h-5 text-blue-500 group-hover:text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-900" title={savedSchedule.name}>
+                                    {savedSchedule.name}
+                                  </p>
+                                  <p className="text-xs text-gray-500 group-hover:text-blue-600">
+                                    {savedSchedule.total_schedulable_days} days • {savedSchedule.employees.length} employees • {new Date(savedSchedule.created_at).toLocaleDateString()}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Delete Button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Delete "${savedSchedule.name}"? This cannot be undone.`)) {
+                                  handleDeleteSavedSchedule(savedSchedule.id);
+                                  setShowDropdown(false);
+                                }
+                              }}
+                              className="ml-3 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all duration-150 opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1"
+                              title={`Delete "${savedSchedule.name}"`}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
+
+
               {error && (
                 <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded">
                   <div className="flex">
@@ -2169,7 +2568,18 @@ export default function RosterPage() {
               )}
             </div>
             {/* Calendar full width card */}
-            <div className="bg-white shadow rounded-lg p-4 w-full max-w-full overflow-x-auto mb-8">
+            <div className="bg-white shadow rounded-lg p-4 w-full max-w-full overflow-x-auto mb-8 relative">
+              {loadingSchedule && (
+                <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10 rounded-lg">
+                  <div className="flex items-center text-blue-600">
+                    <svg className="animate-spin h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="m15.84 2.016.77-.866c.13-.146.26-.289.36-.44.06-.088.1-.186.1-.29 0-.264-.184-.48-.43-.48-.116 0-.224.048-.305.128l-.863.773c-.143.128-.285.26-.424.396-.1.098-.195.201-.286.308-.084.098-.163.2-.237.306-.069.099-.133.202-.192.308-.055.099-.105.202-.149.308-.042.099-.078.202-.108.308-.028.099-.05.202-.066.308-.015.099-.024.202-.026.308-.002.106.003.213.013.32z"></path>
+                    </svg>
+                    <span className="font-medium">Loading calendar...</span>
+                  </div>
+                </div>
+              )}
               <Calendar
                 onChange={(value: Value) => {
                   if (Array.isArray(value)) {
@@ -2414,7 +2824,18 @@ export default function RosterPage() {
             
             {/* Schedule Summary full width card */}
             {schedule && schedule.length > 0 && scheduleSummaryData.length > 0 && (
-              <div className="bg-white shadow rounded-lg p-4 w-full max-w-full overflow-x-auto">
+              <div className="bg-white shadow rounded-lg p-4 w-full max-w-full overflow-x-auto relative">
+                {loadingSchedule && (
+                  <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10 rounded-lg">
+                    <div className="flex items-center text-blue-600">
+                      <svg className="animate-spin h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="m15.84 2.016.77-.866c.13-.146.26-.289.36-.44.06-.088.1-.186.1-.29 0-.264-.184-.48-.43-.48-.116 0-.224.048-.305.128l-.863.773c-.143.128-.285.26-.424.396-.1.098-.195.201-.286.308-.084.098-.163.2-.237.306-.069.099-.133.202-.192.308-.055.099-.105.202-.149.308-.042.099-.078.202-.108.308-.028.099-.05.202-.066.308-.015.099-.024.202-.026.308-.002.106.003.213.013.32z"></path>
+                      </svg>
+                      <span className="font-medium">Loading summary...</span>
+                    </div>
+                  </div>
+                )}
                 <h2 className="text-xl font-semibold mb-4">Schedule Summary</h2>
                 <table className="min-w-full w-full max-w-full">
                   <thead>

@@ -16,16 +16,39 @@ const SmoothProgressBar: React.FC<SmoothProgressBarProps> = ({ taskComplete, dur
       if (intervalRef.current) clearInterval(intervalRef.current);
       return;
     }
+    
     setProgress(0);
     const start = Date.now();
+    
     intervalRef.current = setInterval(() => {
       const elapsed = (Date.now() - start) / 1000;
-      let percent = Math.min((elapsed / duration) * 95, 95);
-      setProgress(percent);
-      if (percent >= 95) {
-        if (intervalRef.current) clearInterval(intervalRef.current);
+      
+      // Use an easing function that slows down as it approaches the end
+      // This creates a more realistic progression that won't mislead users
+      let percent;
+      
+      if (elapsed < duration * 0.6) {
+        // First 60% of the time: progress steadily to 40%
+        percent = (elapsed / (duration * 0.6)) * 40;
+      } else if (elapsed < duration * 0.8) {
+        // Next 20% of the time: progress from 40% to 60%
+        const progressInPhase = (elapsed - (duration * 0.6)) / (duration * 0.2);
+        percent = 40 + (progressInPhase * 20);
+      } else if (elapsed < duration * 0.95) {
+        // Next 15% of the time: progress from 60% to 75%
+        const progressInPhase = (elapsed - (duration * 0.8)) / (duration * 0.15);
+        percent = 60 + (progressInPhase * 15);
+      } else {
+        // Final 5% of the time: progress very slowly from 75% to 85% and then stop
+        const progressInPhase = (elapsed - (duration * 0.95)) / (duration * 0.05);
+        percent = Math.min(75 + (progressInPhase * 10), 85);
       }
-    }, 16); // ~60fps
+      
+      setProgress(Math.min(percent, 85)); // Cap at 85% until task is complete
+      
+      // Don't clear the interval - let it continue running slowly at the end
+    }, 100); // Update every 100ms for smoother animation
+    
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
