@@ -1381,6 +1381,14 @@ export default function RosterPage() {
         return;
       }
 
+      if (validEmployees.length < 3) {
+        setError("At least 3 employees are required to generate a schedule. Please add more employees.");
+        setLoading(false);
+        setAbortController(null);
+        clearInterval(timerInterval);
+        return;
+      }
+
       // Check for incomplete date range exclusions
       const incompleteRangeExclusions = excludedDates.some(entry => 
         entry.type === 'range' && (!entry.startDate || !entry.endDate)
@@ -1398,14 +1406,17 @@ export default function RosterPage() {
 
       // 1) Build the `employees` array (employeeData) - cost logic remains important for preferences on allowed days
       setGenerationProgress(10);
-      const rankWeights = [0, 20, 40];
+      // Define costs with heavy bias toward top 2 preferences, 3rd as fallback, 4th+ heavily penalized
+      const rankWeights = [0, 20, 70, 150, 300, 450, 600];
+      const NO_PREFERENCE_COST = 800; // Much higher than any ranked preference
+      
       const employeeData = employees.map((emp: Employee) => {
         const cost = Array(7).fill(1000);
         emp.preferences.forEach((preferredDay: DayOfWeek, rankIndex: number) => {
           if (preferredDay && schedulableDays.includes(preferredDay)) {
             const dayIndex = DAYS_OF_WEEK.indexOf(preferredDay);
             if (dayIndex !== -1) {
-              cost[dayIndex] = rankWeights[rankIndex] ?? 100;
+              cost[dayIndex] = rankWeights[rankIndex];
             }
           }
         });
@@ -1413,10 +1424,10 @@ export default function RosterPage() {
           const currentDayName = DAYS_OF_WEEK[i];
           if (schedulableDays.includes(currentDayName)) {
             if (cost[i] === 1000) { 
-              cost[i] = 60; 
+              cost[i] = NO_PREFERENCE_COST; // Unranked days are least preferred among schedulable days
             }
           } else {
-            cost[i] = 1000; 
+            cost[i] = 1000; // Unavailable days
           }
         }
         return { name: emp.name, weekday_cost: cost };
@@ -2599,10 +2610,20 @@ export default function RosterPage() {
                   <button
                     className="rounded bg-psu-blue px-4 py-2 text-white hover:opacity-90 disabled:opacity-50"
                     onClick={handleGenerateSchedule}
-                    disabled={loading}
+                    disabled={loading || employees.filter(emp => emp.name && emp.name.trim() !== '').length < 3}
                   >
                     {loading ? 'Generating…' : `Generate Schedule for ${totalSchedulableDays} Days`}
                   </button>
+                  {employees.filter(emp => emp.name && emp.name.trim() !== '').length < 3 && !loading && (
+                    <div className="flex items-center text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-md border border-amber-200">
+                      <svg className="w-4 h-4 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                      <span className="text-amber-700 font-medium">
+                        At least 3 employees required ({employees.filter(emp => emp.name && emp.name.trim() !== '').length}/3)
+                      </span>
+                    </div>
+                  )}
                   {loading && (
                     <button
                       className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
