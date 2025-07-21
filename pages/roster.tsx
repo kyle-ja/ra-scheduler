@@ -145,6 +145,7 @@ export type DayOfWeek = 'Sunday' | 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursda
 interface Employee {
   id: string;
   name: string;
+  email: string;
   preferences: DayOfWeek[];
 }
 
@@ -994,6 +995,16 @@ export default function RosterPage() {
   const handleUpdatePreferenceSession = async () => {
     if (!currentSessionId || !userId || originalResponseIds.length === 0) return;
 
+    // Validate that all employees have names
+    const employeesWithoutNames = employees.filter(emp => !emp.name || !emp.name.trim());
+    if (employeesWithoutNames.length > 0) {
+      setFeedbackMessage({ 
+        type: 'error', 
+        message: 'All employees must have names before updating responses' 
+      });
+      return;
+    }
+
     try {
       // Verify session ownership first
       const { data: sessionData, error: sessionError } = await supabase
@@ -1010,7 +1021,8 @@ export default function RosterPage() {
         throw new Error('Unauthorized: You can only update responses from your own sessions');
       }
 
-      // Update each employee response
+      // Update each employee response with both name and preferences
+      // Note: We only update name and preferences, preserving the email from the database
       const updatePromises = employees.map((employee, index) => {
         const responseId = originalResponseIds[index];
         if (!responseId) return Promise.resolve();
@@ -1018,6 +1030,8 @@ export default function RosterPage() {
         return supabase
           .from('employee_responses')
           .update({ 
+            employee_name: employee.name.trim(),
+            employee_email: employee.email.trim(),
             preferences: employee.preferences.filter(p => p !== '') // Remove empty preferences
           })
           .eq('id', responseId)
@@ -1034,7 +1048,7 @@ export default function RosterPage() {
       }
 
       setOriginalEmployees([...employees]); // Update original state
-      setFeedbackMessage({ type: 'success', message: 'Preference responses updated successfully!' });
+      setFeedbackMessage({ type: 'success', message: 'Employee responses updated successfully!' });
       setTimeout(() => setFeedbackMessage(null), 3000);
 
     } catch (error: any) {
@@ -1135,6 +1149,7 @@ export default function RosterPage() {
       {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
         name: '',
+        email: '',
         preferences: Array(schedulableDays.length).fill(''),
       },
     ]);
@@ -1255,6 +1270,7 @@ export default function RosterPage() {
     setEmployees([{
       id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
       name: '',
+      email: '',
       preferences: Array(7).fill(''),
     }]);
     setOriginalEmployees([]);
@@ -1537,7 +1553,7 @@ export default function RosterPage() {
     return d >= s && d <= e;
   }
 
-  const handleExportToExcel = () => {
+  const handleExportToExcel = async () => {
     if (!employees || employees.length === 0) {
       alert("No employee data available to export.");
       return;
@@ -1575,6 +1591,43 @@ export default function RosterPage() {
       return out;
     };
 
+    // Build employee emails mapping from current employee data
+    // This works for both preference sessions and manually created rosters
+    let employeeEmails: { [name: string]: string } = {};
+    
+    // First, use emails from current employees state (works for all data sources)
+    employees.forEach(employee => {
+      if (employee.name && employee.email) {
+        employeeEmails[employee.name.trim()] = employee.email.trim();
+      }
+    });
+    
+    console.log('Employee emails mapping from current state:', employeeEmails);
+    
+    // If no emails found in current state and we have a session, try fetching from database
+    // This is a fallback in case the emails weren't loaded properly into the employees state
+    if (Object.keys(employeeEmails).length === 0 && currentSessionId) {
+      try {
+        const { data: responses, error } = await supabase
+          .from('employee_responses')
+          .select('employee_name, employee_email')
+          .eq('session_id', currentSessionId);
+
+        if (!error && responses) {
+          console.log('Fallback: Fetched responses for email lookup:', responses);
+          employeeEmails = responses.reduce((acc, response) => {
+            if (response.employee_email && response.employee_name) {
+              acc[response.employee_name.trim()] = response.employee_email.trim();
+            }
+            return acc;
+          }, {} as { [name: string]: string });
+          console.log('Fallback: Employee emails mapping:', employeeEmails);
+        }
+      } catch (error) {
+        console.error('Error in fallback email fetch:', error);
+      }
+    }
+
     // 1. Main Schedule Data - include ALL dates in range
     const allDatesInRange = generateAllDatesInRange();
     console.log('All dates in range generated:', allDatesInRange);
@@ -1611,7 +1664,10 @@ export default function RosterPage() {
     // 2. Roster/Preferences Table Data
     // Assuming preferences are ranked, up to 7 choices
     const rosterSheetData = employees.map(emp => {
-      const row: { [key: string]: string } = { 'Employee Name': emp.name };
+      const row: { [key: string]: string } = { 
+        'Employee Name': emp.name,
+        'Email': emp.email || 'N/A'
+      };
       emp.preferences.forEach((pref, index) => {
         row[`Preference ${index + 1}`] = pref || 'N/A';
       });
@@ -1633,17 +1689,88 @@ export default function RosterPage() {
       'Total Days Assigned': row.totalDaysAssigned,
     }));
 
+    // 4. MS Shifts Upload Tab Data - include ALL dates in range
+    const msShiftsData: any[] = [];
+    allDatesInRange.forEach((dateInfo: { date: string; weekday: number; month: string }) => {
+      const dateObj = parseYYYYMMDDToLocalDate(dateInfo.date);
+      if (dateObj) {
+        // Check if this date is excluded
+        const isExcluded = excludedDatesSet.has(dateObj.toDateString());
+        
+        // Get the assigned employee for this date (if any)
+        const assignedEmployee = scheduleMap[dateInfo.date] || '';
+        
+        // Start date is the current date
+        const startDate = dateObj.toLocaleDateString('en-US', { 
+          month: '2-digit', 
+          day: '2-digit', 
+          year: 'numeric' 
+        });
+        
+        // End date is the next day
+        const endDateObj = new Date(dateObj);
+        endDateObj.setDate(endDateObj.getDate() + 1);
+        const endDate = endDateObj.toLocaleDateString('en-US', { 
+          month: '2-digit', 
+          day: '2-digit', 
+          year: 'numeric' 
+        });
+
+        // Determine member name and email
+        let memberName = '';
+        let workEmail = '';
+        
+        if (isExcluded) {
+          // For excluded days, leave member empty but could add a note
+          memberName = '';
+          workEmail = '';
+        } else if (assignedEmployee) {
+          // For scheduled days, use the assigned employee
+          memberName = assignedEmployee;
+          // Try exact name match first, then trimmed match
+          workEmail = employeeEmails[assignedEmployee] || 
+                     employeeEmails[assignedEmployee.trim()] || '';
+          
+          // Debug logging to help troubleshoot
+          if (!workEmail) {
+            console.log(`No email found for employee: "${assignedEmployee}"`);
+            console.log('Available email mappings:', Object.keys(employeeEmails));
+          }
+        } else {
+          // For unscheduled days (e.g., non-schedulable days), leave empty
+          memberName = '';
+          workEmail = '';
+        }
+
+        msShiftsData.push({
+          'Member': memberName,
+          'Work Email': workEmail,
+          'Group': '', // Empty as specified
+          'Start Date': startDate,
+          'Start Time': '8:00 PM',
+          'End Date': endDate,
+          'End Time': '7:00 AM',
+          'Theme Color': '',
+          'Custom Label': '',
+          'Unpaid Break (minutes)': '',
+          'Notes': '',
+          'Shared': ''
+        });
+      }
+    });
 
     const wb = XLSX.utils.book_new();
     const scheduleWS = XLSX.utils.json_to_sheet(scheduleSheetData);
     const rosterWS = XLSX.utils.json_to_sheet(rosterSheetData);
     const summaryWS = XLSX.utils.json_to_sheet(summarySheetData);
+    const msShiftsWS = XLSX.utils.json_to_sheet(msShiftsData);
 
     XLSX.utils.book_append_sheet(wb, scheduleWS, "Schedule");
     XLSX.utils.book_append_sheet(wb, rosterWS, "Roster Preferences");
     XLSX.utils.book_append_sheet(wb, summaryWS, "Summary");
+    XLSX.utils.book_append_sheet(wb, msShiftsWS, "MS Shifts Upload");
 
-    // 4. Individual Employee Sheets
+    // 5. Individual Employee Sheets
     if (employees && schedule && schedule.length > 0) {
       employees.forEach(employee => {
         if (employee.name) { // Ensure employee has a name for the sheet
@@ -1719,7 +1846,7 @@ export default function RosterPage() {
       
       // Validate headers - now dynamic based on schedulable days
       const headers = rows[0];
-      const expectedHeaders = ['Employee Name', ...schedulableDays.map((_, index) => 
+      const expectedHeaders = ['Employee Name', 'Email', ...schedulableDays.map((_, index) => 
         `${index + 1}${getOrdinalSuffix(index + 1)} Pref`
       )];
       console.log('Headers found:', headers);
@@ -1740,7 +1867,8 @@ export default function RosterPage() {
         .filter(row => row[0] && row[0].trim() !== '') // Skip empty rows
         .map(row => {
           // Create preferences array with proper length (match schedulable days)
-          const preferences = row.slice(1, schedulableDays.length + 1).map(pref => pref as DayOfWeek);
+          // Email is at index 1, so preferences start at index 2
+          const preferences = row.slice(2, schedulableDays.length + 2).map(pref => pref as DayOfWeek);
           // Ensure preferences array has exactly 7 elements, padding the rest with empty strings
           while (preferences.length < 7) {
             preferences.push('');
@@ -1748,6 +1876,7 @@ export default function RosterPage() {
           return {
             id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
             name: row[0],
+            email: row[1] || '',
             preferences: preferences
           };
         });
@@ -1796,11 +1925,11 @@ export default function RosterPage() {
     const preferenceHeaders = schedulableDays.map((_, index) => 
       `${index + 1}${getOrdinalSuffix(index + 1)} Pref`
     );
-    const headers = ['Employee Name', ...preferenceHeaders];
+    const headers = ['Employee Name', 'Email', ...preferenceHeaders];
     
     // Create example row with actual schedulable days
     const examplePrefs = schedulableDays.slice(); // Use all schedulable days as examples
-    const exampleRow = ['John Doe', ...examplePrefs];
+    const exampleRow = ['John Doe', 'john.doe@example.com', ...examplePrefs];
     
     const csvContent = [headers, exampleRow].map(row => row.join(',')).join('\n');
     
@@ -1867,6 +1996,7 @@ export default function RosterPage() {
       const allEmployeesFromResponses: Employee[] = responses.map(response => ({
         id: response.id,
         name: response.employee_name,
+        email: response.employee_email || '',
         preferences: response.preferences.concat(Array(7 - response.preferences.length).fill(''))
       }));
 
@@ -2089,58 +2219,76 @@ export default function RosterPage() {
             </div>
 
             {/* Employee Roster Table */}
-            <div className="bg-white rounded-lg shadow overflow-x-auto">
-              <table className="min-w-full">
-                <thead>
-                  <tr>
-                    <th></th>
-                    <th scope="col">Employee Name</th>
-                    {Array.from({ length: schedulableDays.length }, (_, i) => (
-                      <th key={i} scope="col">
-                        {i + 1}{getOrdinalSuffix(i + 1)} Pref
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
+            <div className="bg-white rounded-lg shadow overflow-x-auto" style={{ maxWidth: '100%' }}>
+              <table className="min-w-full table-auto">
+                                 <thead>
+                   <tr className="bg-psu-blue">
+                     <th className="px-2 py-3 text-center text-sm font-bold text-white uppercase tracking-wider" style={{ width: '40px' }}></th>
+                     <th className="px-3 py-3 text-left text-sm font-bold text-white uppercase tracking-wider" style={{ minWidth: '150px' }}>Name</th>
+                     <th className="px-3 py-3 text-left text-sm font-bold text-white uppercase tracking-wider" style={{ minWidth: '180px' }}>Email</th>
+                     {Array.from({ length: schedulableDays.length }, (_, i) => (
+                       <th 
+                         key={i} 
+                         className="px-1 py-3 text-center text-sm font-bold text-white uppercase tracking-wider" 
+                         style={{ minWidth: schedulableDays.length >= 6 ? '70px' : '85px' }}
+                         title={`${i + 1}${getOrdinalSuffix(i + 1)} Preference`}
+                       >
+                         {schedulableDays.length >= 6 ? `${i + 1}${getOrdinalSuffix(i + 1)}` : `${i + 1}${getOrdinalSuffix(i + 1)} Pref`}
+                       </th>
+                     ))}
+                   </tr>
+                 </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
                   {(employees || []).map((employee) => (
-                    <tr key={employee.id}>
-                      <td style={{ width: 40, textAlign: 'center' }}>
+                    <tr key={employee.id} className="hover:bg-gray-50">
+                      <td className="px-2 py-4 text-center" style={{ width: '40px' }}>
                         <button
                           onClick={() => handleRemoveEmployee(employee.id)}
-                          className="bg-psu-blue text-white px-2 py-1 rounded font-semibold"
+                          className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors shadow-sm"
                           title="Delete employee"
                         >
-                          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                           </svg>
                         </button>
                       </td>
-                      <td>
+                      <td className="px-3 py-4">
                         <input
                           type="text"
                           value={employee.name}
                           onChange={e => setEmployees(employees.map(emp => emp.id === employee.id ? { ...emp, name: e.target.value } : emp))}
                           placeholder="Enter employee name"
-                          className="text-sm font-medium"
+                          className="w-full text-sm font-medium border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </td>
+                      <td className="px-3 py-4">
+                        <input
+                          type="email"
+                          value={employee.email}
+                          onChange={e => setEmployees(employees.map(emp => emp.id === employee.id ? { ...emp, email: e.target.value } : emp))}
+                          placeholder="Enter email address"
+                          className="w-full text-sm font-medium border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </td>
                       {Array.from({ length: schedulableDays.length }, (_, index) => (
-                        <td key={index}>
+                        <td key={index} className="px-1 py-4">
                           <select
                             value={employee.preferences[index] || ''}
                             onChange={e => handlePreferenceChange(employee.id, index, e.target.value as DayOfWeek)}
-                            className={`mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md ${
+                            className={`block w-full text-xs border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md px-1 py-1 ${
                               employee.preferences[index] && schedulableDays.includes(employee.preferences[index])
                                 ? 'bg-green-50 border-green-300 text-green-700' 
                                 : 'bg-gray-50 border-gray-300 text-gray-700'
                             }`}
+                            style={{ minWidth: schedulableDays.length >= 6 ? '70px' : '85px' }}
                           >
                             <option value="">Clear</option>
                             {[employee.preferences[index], ...getAvailableDays(employee.preferences, index)]
                                 .filter((value, i, self) => (schedulableDays.includes(value) || value === '') && self.indexOf(value) === i)
                                 .map(day => (
-                                    <option key={day || `no-pref-${index}-${employee.id}`} value={day}>{DAY_ABBREVIATIONS[day] || day || 'Not Selected'}</option>
+                                    <option key={day || `no-pref-${index}-${employee.id}`} value={day}>
+                                      {DAY_ABBREVIATIONS[day] || day || 'Not Selected'}
+                                    </option>
                                 ))}
                           </select>
                         </td>
@@ -2230,12 +2378,12 @@ export default function RosterPage() {
                             )}
                             <button
                               onClick={() => handleDeleteDateSetting(setting.id)}
-                              className="bg-psu-blue text-white px-2 py-1 rounded font-semibold flex items-center justify-center"
+                              className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors shadow-sm flex items-center justify-center"
                               title="Delete setting"
                               style={{ minWidth: 0, height: '2rem', width: '2rem' }}
                             >
-                              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                               </svg>
                             </button>
                           </div>
@@ -2347,11 +2495,11 @@ export default function RosterPage() {
                                 setSchedule(null);
                               }
                             }}
-                            className="bg-psu-blue text-white px-2 py-1 rounded font-semibold"
+                            className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors shadow-sm"
                             title="Remove exclusion"
                           >
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                             </svg>
                           </button>
                         </div>

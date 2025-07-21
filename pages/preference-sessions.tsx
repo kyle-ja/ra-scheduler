@@ -70,6 +70,8 @@ export default function PreferenceSessionsPage() {
     sessionId: string;
     availableDays: DayOfWeek[];
     editedPreferences: DayOfWeek[];
+    editedName: string;
+    editedEmail: string;
     saving: boolean;
   }>({
     isOpen: false,
@@ -77,6 +79,8 @@ export default function PreferenceSessionsPage() {
     sessionId: '',
     availableDays: [],
     editedPreferences: [],
+    editedName: '',
+    editedEmail: '',
     saving: false
   });
 
@@ -429,6 +433,8 @@ export default function PreferenceSessionsPage() {
       sessionId,
       availableDays: session.schedulable_days,
       editedPreferences: [...response.preferences],
+      editedName: response.employee_name,
+      editedEmail: response.employee_email || '',
       saving: false
     });
   };
@@ -441,6 +447,8 @@ export default function PreferenceSessionsPage() {
       sessionId: '',
       availableDays: [],
       editedPreferences: [],
+      editedName: '',
+      editedEmail: '',
       saving: false
     });
   };
@@ -452,6 +460,21 @@ export default function PreferenceSessionsPage() {
     setEditModal(prev => ({
       ...prev,
       editedPreferences: newPreferences
+    }));
+  };
+
+  // Add functions to update name and email in edit modal
+  const updateEditedName = (name: string) => {
+    setEditModal(prev => ({
+      ...prev,
+      editedName: name
+    }));
+  };
+
+  const updateEditedEmail = (email: string) => {
+    setEditModal(prev => ({
+      ...prev,
+      editedEmail: email
     }));
   };
 
@@ -469,6 +492,12 @@ export default function PreferenceSessionsPage() {
   // Add function to save edited preferences
   const saveEditedPreferences = async () => {
     if (!editModal.response || !userId) return;
+
+    // Validate required fields
+    if (!editModal.editedName.trim()) {
+      setFeedbackMessage({ type: 'error', message: 'Employee name is required' });
+      return;
+    }
 
     setEditModal(prev => ({ ...prev, saving: true }));
 
@@ -514,7 +543,11 @@ export default function PreferenceSessionsPage() {
       // Now try the update
       const { data, error, count } = await supabase
         .from('employee_responses')
-        .update({ preferences: editModal.editedPreferences })
+        .update({ 
+          preferences: editModal.editedPreferences,
+          employee_name: editModal.editedName.trim(),
+          employee_email: editModal.editedEmail.trim() || null
+        })
         .eq('id', editModal.response.id)
         .select();
 
@@ -537,12 +570,17 @@ export default function PreferenceSessionsPage() {
         ...prev,
         [editModal.sessionId]: prev[editModal.sessionId].map(response =>
           response.id === editModal.response!.id
-            ? { ...response, preferences: editModal.editedPreferences }
+            ? { 
+                ...response, 
+                preferences: editModal.editedPreferences,
+                employee_name: editModal.editedName.trim(),
+                employee_email: editModal.editedEmail.trim() || null
+              }
             : response
         )
       }));
 
-      setFeedbackMessage({ type: 'success', message: `Preferences updated for ${editModal.response.employee_name}!` });
+      setFeedbackMessage({ type: 'success', message: `Response updated for ${editModal.editedName}!` });
       setTimeout(() => setFeedbackMessage(null), 3000);
       closeEditModal();
     } catch (error: any) {
@@ -1170,10 +1208,10 @@ export default function PreferenceSessionsPage() {
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">
-                      Edit Preferences for {editModal.response.employee_name}
+                      Edit Response for {editModal.response.employee_name}
                     </h3>
                     <p className="text-sm text-gray-500 mt-1">
-                      Modify the schedule preferences for this employee
+                      Modify the employee information and schedule preferences
                     </p>
                   </div>
                   <button
@@ -1204,6 +1242,39 @@ export default function PreferenceSessionsPage() {
                   </div>
                 </div>
 
+                {/* Employee Information */}
+                <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+                  <h4 className="text-md font-semibold text-gray-900 mb-4">Employee Information</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Full Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={editModal.editedName}
+                        onChange={(e) => updateEditedName(e.target.value)}
+                        disabled={editModal.saving}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Enter employee name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        value={editModal.editedEmail}
+                        onChange={(e) => updateEditedEmail(e.target.value)}
+                        disabled={editModal.saving}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Enter email address"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* Quick Tip */}
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
                   <div className="flex items-start">
@@ -1211,9 +1282,9 @@ export default function PreferenceSessionsPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
                     <div>
-                      <p className="text-sm font-medium text-yellow-800 mb-1">Editing Preferences</p>
+                      <p className="text-sm font-medium text-yellow-800 mb-1">Editing Response</p>
                       <p className="text-sm text-yellow-700">
-                        Modify the employee's preferences in order of priority. Leave blank slots if they have fewer preferences.
+                        You can modify the employee's name, email, and preferences. Changes will be saved to the database.
                       </p>
                     </div>
                   </div>
