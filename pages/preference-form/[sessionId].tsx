@@ -105,6 +105,13 @@ export default function EmployeePreferenceForm() {
       return;
     }
 
+    // Validate that all preferences are filled
+    const emptyPreferences = preferences.filter(pref => pref === '').length;
+    if (emptyPreferences > 0) {
+      setFormError(`Please rank all ${session?.schedulable_days.length} days. You have ${emptyPreferences} unranked day(s).`);
+      return;
+    }
+
     if (!session) return;
 
     setSubmitting(true);
@@ -299,33 +306,20 @@ export default function EmployeePreferenceForm() {
                 </div>
               </div>
 
-              {/* Quick Tip - Moved to top */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start">
-                  <svg className="w-5 h-5 text-[var(--primary-blue)] mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                  <div>
-                    <p className="text-sm font-medium text-[var(--primary-blue)] mb-1">Quick Tip</p>
-                    <p className="text-sm text-blue-700">
-                      Rank your preferred days in order. You don't need to fill all options - your first choice matters most!
-                    </p>
-                  </div>
-                </div>
-              </div>
-
               {/* Preferences Section */}
               <div>
-                <h3 className="text-lg font-semibold text-[var(--primary-black)] mb-2">Schedule Preferences</h3>
+                <h3 className="text-lg font-semibold text-[var(--primary-black)] mb-2">
+                  Schedule Preferences <span className="text-[var(--error-red)]">*</span>
+                </h3>
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                   <div className="flex items-start">
                     <svg className="w-5 h-5 text-[var(--primary-blue)] mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div>
-                      <p className="text-sm font-medium text-[var(--primary-blue)] mb-1">Available Days</p>
+                      <p className="text-sm font-medium text-[var(--primary-blue)] mb-1">Instructions</p>
                       <p className="text-sm text-blue-700">
-                        Select your preferred work days from: <span className="font-medium">{session.schedulable_days.join(', ')}</span>
+                        Please rank ALL {session.schedulable_days.length} days in order of preference from: <span className="font-medium">{session.schedulable_days.join(', ')}</span>
                       </p>
                     </div>
                   </div>
@@ -357,14 +351,17 @@ export default function EmployeePreferenceForm() {
                              index === 3 ? '4th Choice' :
                              index === 4 ? '5th Choice' :
                              index === 5 ? '6th Choice' :
-                             'Least Preferred Day'}
+                             'Least Preferred Day'} <span className="text-[var(--error-red)]">*</span>
                           </label>
                           <select
                             value={preference}
                             onChange={(e) => updatePreference(index, e.target.value as DayOfWeek)}
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[var(--primary-blue)] focus:border-[var(--primary-blue)]"
+                            className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-[var(--primary-blue)] focus:border-[var(--primary-blue)] ${
+                              preference === '' ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                            }`}
+                            required
                           >
-                            <option value="">Select a day</option>
+                            <option value="">Select a day (required)</option>
                             {/* Show current selection even if it would normally be filtered out */}
                             {preference && !availableDays.includes(preference) && (
                               <option key={preference} value={preference}>{preference}</option>
