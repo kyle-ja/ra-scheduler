@@ -63,6 +63,23 @@ export default function PreferenceSessionsPage() {
     sessionName: ''
   });
 
+  // Add state for edit preferences modal
+  const [editModal, setEditModal] = useState<{
+    isOpen: boolean;
+    response: EmployeeResponse | null;
+    sessionId: string;
+    availableDays: DayOfWeek[];
+    editedPreferences: DayOfWeek[];
+    saving: boolean;
+  }>({
+    isOpen: false,
+    response: null,
+    sessionId: '',
+    availableDays: [],
+    editedPreferences: [],
+    saving: false
+  });
+
   useEffect(() => {
     const loadUserAndSessions = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -398,6 +415,141 @@ export default function PreferenceSessionsPage() {
     } catch (error) {
       console.error('Error renaming session:', error);
       setFeedbackMessage({ type: 'error', message: 'Failed to rename session.' });
+    }
+  };
+
+  // Add function to open edit modal
+  const openEditModal = (response: EmployeeResponse, sessionId: string) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session) return;
+
+    setEditModal({
+      isOpen: true,
+      response,
+      sessionId,
+      availableDays: session.schedulable_days,
+      editedPreferences: [...response.preferences],
+      saving: false
+    });
+  };
+
+  // Add function to close edit modal
+  const closeEditModal = () => {
+    setEditModal({
+      isOpen: false,
+      response: null,
+      sessionId: '',
+      availableDays: [],
+      editedPreferences: [],
+      saving: false
+    });
+  };
+
+  // Add function to update preference in edit modal
+  const updateEditedPreference = (index: number, day: DayOfWeek) => {
+    const newPreferences = [...editModal.editedPreferences];
+    newPreferences[index] = day;
+    setEditModal(prev => ({
+      ...prev,
+      editedPreferences: newPreferences
+    }));
+  };
+
+  // Add function to get available days for editing (excluding already selected days)
+  const getAvailableDaysForEdit = (currentIndex: number) => {
+    const selectedDays = editModal.editedPreferences.filter((day, index) => 
+      index !== currentIndex && day !== ''
+    );
+    
+    return editModal.availableDays.filter(day => 
+      !selectedDays.includes(day)
+    );
+  };
+
+  // Add function to save edited preferences
+  const saveEditedPreferences = async () => {
+    if (!editModal.response || !userId) return;
+
+    setEditModal(prev => ({ ...prev, saving: true }));
+
+    try {
+      // First, verify session ownership by checking if the session belongs to the current user
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('preference_sessions')
+        .select('manager_id')
+        .eq('id', editModal.sessionId)
+        .single();
+
+      if (sessionError) {
+        console.error('Error verifying session ownership:', sessionError);
+        throw new Error('Failed to verify session ownership');
+      }
+
+      if (sessionData.manager_id !== userId) {
+        throw new Error('Unauthorized: You can only edit responses from your own sessions');
+      }
+
+      // First, let's verify we can read the response
+      console.log('Attempting to update preferences:', {
+        responseId: editModal.response.id,
+        sessionId: editModal.sessionId,
+        newPreferences: editModal.editedPreferences,
+        userId: userId
+      });
+
+      // Test if we can read the response first
+      const { data: readData, error: readError } = await supabase
+        .from('employee_responses')
+        .select('*')
+        .eq('id', editModal.response.id)
+        .single();
+
+      console.log('Read test result:', { readData, readError });
+
+      if (readError) {
+        console.error('Cannot read the response, likely RLS issue:', readError);
+        throw new Error('Cannot access this response. Database permissions may be preventing access.');
+      }
+
+      // Now try the update
+      const { data, error, count } = await supabase
+        .from('employee_responses')
+        .update({ preferences: editModal.editedPreferences })
+        .eq('id', editModal.response.id)
+        .select();
+
+      console.log('Supabase update result:', { data, error, count });
+
+      if (error) {
+        console.error('Supabase update error:', error);
+        throw error;
+      }
+
+      if (!data || data.length === 0) {
+        console.error('No rows were updated. This might indicate a permission issue or the row doesn\'t exist.');
+        throw new Error('No rows were updated. Please check if you have permission to edit this response.');
+      }
+
+      console.log('Preferences updated successfully in database. Updated data:', data);
+
+      // Update local state
+      setSessionResponses(prev => ({
+        ...prev,
+        [editModal.sessionId]: prev[editModal.sessionId].map(response =>
+          response.id === editModal.response!.id
+            ? { ...response, preferences: editModal.editedPreferences }
+            : response
+        )
+      }));
+
+      setFeedbackMessage({ type: 'success', message: `Preferences updated for ${editModal.response.employee_name}!` });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+      closeEditModal();
+    } catch (error: any) {
+      console.error('Error updating preferences:', error);
+      setFeedbackMessage({ type: 'error', message: error.message || 'Failed to update preferences' });
+    } finally {
+      setEditModal(prev => ({ ...prev, saving: false }));
     }
   };
 
@@ -888,19 +1040,30 @@ export default function PreferenceSessionsPage() {
                                               : 'hover:bg-gray-50'
                                           }`}>
                                             <td className="px-3 py-4 text-center">
-                                              <button
-                                                onClick={() => handleMarkForDeletion(response.id, session.id, response.employee_name)}
-                                                className={`p-2 rounded-md transition-colors ${
-                                                  pendingDeletions[session.id]?.includes(response.id)
-                                                    ? 'text-red-600 bg-red-50' 
-                                                    : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
-                                                }`}
-                                                title={pendingDeletions[session.id]?.includes(response.id) ? "Marked for deletion" : "Mark for deletion"}
-                                              >
-                                                <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                                                  <path d="M6.5 7.5V14.5M10 7.5V14.5M13.5 7.5V14.5M3 5.5H17M8.5 3.5H11.5C12.0523 3.5 12.5 3.94772 12.5 4.5V5.5H7.5V4.5C7.5 3.94772 7.94772 3.5 8.5 3.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                                </svg>
-                                              </button>
+                                              <div className="flex flex-col space-y-2">
+                                                <button
+                                                  onClick={() => openEditModal(response, session.id)}
+                                                  className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors shadow-sm"
+                                                  title="Edit preferences"
+                                                >
+                                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                                                  </svg>
+                                                </button>
+                                                <button
+                                                  onClick={() => handleMarkForDeletion(response.id, session.id, response.employee_name)}
+                                                  className={`p-2 rounded-md transition-colors shadow-sm ${
+                                                    pendingDeletions[session.id]?.includes(response.id)
+                                                      ? 'bg-red-600 text-white' 
+                                                      : 'bg-red-600 hover:bg-red-700 text-white'
+                                                  }`}
+                                                  title={pendingDeletions[session.id]?.includes(response.id) ? "Marked for deletion" : "Mark for deletion"}
+                                                >
+                                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                                  </svg>
+                                                </button>
+                                              </div>
                                             </td>
                                             <td className="px-6 py-4">
                                               <div className="text-sm font-medium text-gray-900">{response.employee_name}</div>
@@ -998,6 +1161,148 @@ export default function PreferenceSessionsPage() {
             )}
           </div>
         </div>
+
+        {/* Edit Preferences Modal */}
+        {editModal.isOpen && editModal.response && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 rounded-t-lg">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Edit Preferences for {editModal.response.employee_name}
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Modify the schedule preferences for this employee
+                    </p>
+                  </div>
+                  <button
+                    onClick={closeEditModal}
+                    className="text-gray-400 hover:text-gray-500"
+                    disabled={editModal.saving}
+                  >
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              
+              <div className="px-6 py-6">
+                {/* Available Days Info */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-start">
+                    <svg className="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-medium text-blue-800 mb-1">Available Days</p>
+                      <p className="text-sm text-blue-700">
+                        Available days for this session: <span className="font-medium">{editModal.availableDays.join(', ')}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Tip */}
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-start">
+                    <svg className="w-5 h-5 text-yellow-600 mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-medium text-yellow-800 mb-1">Editing Preferences</p>
+                      <p className="text-sm text-yellow-700">
+                        Modify the employee's preferences in order of priority. Leave blank slots if they have fewer preferences.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Preferences Form */}
+                <div className="space-y-4">
+                  {editModal.editedPreferences.map((preference, index) => {
+                    const availableDays = getAvailableDaysForEdit(index);
+                    return (
+                      <div key={index} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                        <div className="flex-shrink-0">
+                          <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium text-white ${
+                            index === 0 ? 'bg-green-600' :
+                            index === 1 ? 'bg-blue-600' :
+                            index === 2 ? 'bg-purple-600' :
+                            index === 3 ? 'bg-indigo-600' :
+                            index === 4 ? 'bg-pink-600' :
+                            index === 5 ? 'bg-red-600' :
+                            'bg-gray-600'
+                          }`}>
+                            {index + 1}
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            {index === 0 ? 'Most Preferred Day' :
+                             index === 1 ? '2nd Choice' :
+                             index === 2 ? '3rd Choice' :
+                             index === 3 ? '4th Choice' :
+                             index === 4 ? '5th Choice' :
+                             index === 5 ? '6th Choice' :
+                             'Least Preferred Day'}
+                          </label>
+                          <select
+                            value={preference}
+                            onChange={(e) => updateEditedPreference(index, e.target.value as DayOfWeek)}
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                            disabled={editModal.saving}
+                          >
+                            <option value="">Select a day</option>
+                            {/* Show current selection even if it would normally be filtered out */}
+                            {preference && !availableDays.includes(preference) && (
+                              <option key={preference} value={preference}>{preference}</option>
+                            )}
+                            {/* Show available days */}
+                            {availableDays.map(day => (
+                              <option key={day} value={day}>{day}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="sticky bottom-0 bg-gray-50 px-6 py-4 border-t border-gray-200 rounded-b-lg">
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={closeEditModal}
+                    disabled={editModal.saving}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveEditedPreferences}
+                    disabled={editModal.saving}
+                    className="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {editModal.saving ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Changes'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* QR Code Modal */}
         {qrCodeModal.isOpen && qrCodeModal.qrCodeDataURL && (

@@ -232,6 +232,10 @@ export default function RosterPage() {
   const [originalEmployees, setOriginalEmployees] = useState<Employee[]>([]);
   const [schedulableDays, setSchedulableDays] = useState<DayOfWeek[]>(DAYS_OF_WEEK);
   const [maxConsecutiveDays, setMaxConsecutiveDays] = useState<number>(1); // Default to 1
+  
+  // Add state to track if we're working with a preference session
+  const [currentSessionId, setCurrentSessionId] = useState<string>('');
+  const [originalResponseIds, setOriginalResponseIds] = useState<string[]>([]); // Track response IDs for updates
   const [dateSettings, setDateSettings] = useState<DateSetting[]>([]);
   const [newSettingName, setNewSettingName] = useState('');
   const [selectedSettingId, setSelectedSettingId] = useState<string>('');
@@ -590,6 +594,8 @@ export default function RosterPage() {
         // Clear current roster state
         setCurrentRosterName(`${savedSchedule.name} (Saved Schedule)`);
         setCurrentRosterId('');
+        setCurrentSessionId(''); // Clear session state
+        setOriginalResponseIds([]); // Clear response IDs
         setSelectedRosterId('');
         setSelectedScheduleId('');
         setRenameValue('');
@@ -984,6 +990,59 @@ export default function RosterPage() {
     setTimeout(() => setFeedbackMessage(null), 3000);
   };
 
+  // Add function to update preference session responses
+  const handleUpdatePreferenceSession = async () => {
+    if (!currentSessionId || !userId || originalResponseIds.length === 0) return;
+
+    try {
+      // Verify session ownership first
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('preference_sessions')
+        .select('manager_id')
+        .eq('id', currentSessionId)
+        .single();
+
+      if (sessionError) {
+        throw new Error('Failed to verify session ownership');
+      }
+
+      if (sessionData.manager_id !== userId) {
+        throw new Error('Unauthorized: You can only update responses from your own sessions');
+      }
+
+      // Update each employee response
+      const updatePromises = employees.map((employee, index) => {
+        const responseId = originalResponseIds[index];
+        if (!responseId) return Promise.resolve();
+
+        return supabase
+          .from('employee_responses')
+          .update({ 
+            preferences: employee.preferences.filter(p => p !== '') // Remove empty preferences
+          })
+          .eq('id', responseId)
+          .eq('session_id', currentSessionId);
+      });
+
+      const results = await Promise.all(updatePromises);
+      
+      // Check for any errors
+      const errorResults = results.filter(result => result && result.error);
+      if (errorResults.length > 0) {
+        console.error('Some updates failed:', errorResults);
+        throw new Error(`Failed to update ${errorResults.length} response(s)`);
+      }
+
+      setOriginalEmployees([...employees]); // Update original state
+      setFeedbackMessage({ type: 'success', message: 'Preference responses updated successfully!' });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+
+    } catch (error: any) {
+      console.error('Error updating preference session:', error);
+      setFeedbackMessage({ type: 'error', message: error.message || 'Failed to update preference responses.' });
+    }
+  };
+
   const handleLoadRoster = (rosterId: string) => {
     const selectedRoster = savedRosters.find(roster => roster.id === rosterId);
     if (selectedRoster) {
@@ -992,6 +1051,8 @@ export default function RosterPage() {
       setSelectedRosterId('');
       setCurrentRosterName(selectedRoster.name);
       setCurrentRosterId(selectedRoster.id);
+      setCurrentSessionId(''); // Clear session state
+      setOriginalResponseIds([]); // Clear response IDs
       setSchedulableDays(selectedRoster.schedulable_days || DAYS_OF_WEEK);
       clearScheduleAndTime();
       setRenameValue('');
@@ -1142,6 +1203,8 @@ export default function RosterPage() {
       if (error) throw error;
       setSavedRosters(savedRosters.filter(roster => roster.id !== currentRosterId));
       setCurrentRosterId('');
+      setCurrentSessionId(''); // Clear session state
+      setOriginalResponseIds([]); // Clear response IDs
       setCurrentRosterName('Unsaved Roster');
       setEmployees([]);
       setOriginalEmployees([]);
@@ -1187,6 +1250,8 @@ export default function RosterPage() {
   const handleNewRoster = () => {
     setCurrentRosterName('Unsaved Roster');
     setCurrentRosterId('');
+    setCurrentSessionId(''); // Clear session state
+    setOriginalResponseIds([]); // Clear response IDs
     setEmployees([{
       id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
       name: '',
@@ -1209,16 +1274,19 @@ export default function RosterPage() {
 
   // Helper function to check if employees have changed
   const hasEmployeesChanged = () => {
-    if (!currentRosterId) return false;
+    // Check if we're working with a roster or preference session
+    if (!currentRosterId && !currentSessionId) return false;
     if (employees.length !== originalEmployees.length) return true;
     
-    // Check if schedulable days have changed
-    const currentRoster = savedRosters.find(r => r.id === currentRosterId);
-    if (currentRoster) {
-      const originalSchedulableDays = currentRoster.schedulable_days || DAYS_OF_WEEK;
-      if (schedulableDays.length !== originalSchedulableDays.length) return true;
-      if (schedulableDays.some(day => !originalSchedulableDays.includes(day))) return true;
-      if (originalSchedulableDays.some(day => !schedulableDays.includes(day))) return true;
+    // Check if schedulable days have changed (only for rosters)
+    if (currentRosterId) {
+      const currentRoster = savedRosters.find(r => r.id === currentRosterId);
+      if (currentRoster) {
+        const originalSchedulableDays = currentRoster.schedulable_days || DAYS_OF_WEEK;
+        if (schedulableDays.length !== originalSchedulableDays.length) return true;
+        if (schedulableDays.some(day => !originalSchedulableDays.includes(day))) return true;
+        if (originalSchedulableDays.some(day => !schedulableDays.includes(day))) return true;
+      }
     }
     
     return employees.some((emp, index) => {
@@ -1806,12 +1874,14 @@ export default function RosterPage() {
       const employeesFromResponses = allEmployeesFromResponses.slice(0, MAX_EMPLOYEES);
       const wasLimited = allEmployeesFromResponses.length > MAX_EMPLOYEES;
 
-      // Load into state
+      // Load into state - now track session info
       setEmployees(employeesFromResponses);
       setOriginalEmployees(employeesFromResponses);
       setSelectedRosterId(''); // Clear selected roster
       setCurrentRosterName(`${selectedSession.name} (${employeesFromResponses.length} responses)`);
       setCurrentRosterId(''); // This is from a session, not a saved roster
+      setCurrentSessionId(sessionId); // Track that we're working with a session
+      setOriginalResponseIds(responses.slice(0, MAX_EMPLOYEES).map(r => r.id)); // Track response IDs
       setSchedulableDays(selectedSession.schedulable_days);
       clearScheduleAndTime();
       
@@ -1926,12 +1996,12 @@ export default function RosterPage() {
                   </button>
                 )}
                 
-                {currentRosterId && hasEmployeesChanged() && (
+                {(currentRosterId || currentSessionId) && hasEmployeesChanged() && (
                   <button
-                    onClick={handleUpdateRoster}
+                    onClick={currentRosterId ? handleUpdateRoster : handleUpdatePreferenceSession}
                     className="bg-psu-blue text-white px-4 py-2 rounded font-semibold"
                   >
-                    Update
+                    Update {currentSessionId ? 'Responses' : 'Roster'}
                   </button>
                 )}
                 
