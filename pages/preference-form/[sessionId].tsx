@@ -151,10 +151,10 @@ export default function EmployeePreferenceForm() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[var(--background-white)] flex items-center justify-center p-4" style={{ fontFamily: 'Poppins, Arial, Helvetica, sans-serif' }}>
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">Loading Form</h2>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--primary-blue)] mx-auto mb-4"></div>
+          <h2 className="text-lg font-semibold text-[var(--primary-black)] mb-2">Loading Form</h2>
           <p className="text-gray-600">Please wait while we load your preference form...</p>
         </div>
       </div>
@@ -163,18 +163,18 @@ export default function EmployeePreferenceForm() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 to-pink-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[var(--background-white)] flex items-center justify-center p-4" style={{ fontFamily: 'Poppins, Arial, Helvetica, sans-serif' }}>
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
           </div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Unable to Load Form</h1>
+          <h1 className="text-xl font-bold text-[var(--primary-black)] mb-2">Unable to Load Form</h1>
           <p className="text-gray-600 mb-6">{error}</p>
           <a 
             href="/" 
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[var(--primary-blue)] hover:bg-[#1E407C] transition-colors"
           >
             Learn About Preference Scheduler
           </a>
@@ -185,14 +185,14 @@ export default function EmployeePreferenceForm() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[var(--background-white)] flex items-center justify-center p-4" style={{ fontFamily: 'Poppins, Arial, Helvetica, sans-serif' }}>
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
           <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-8 h-8 text-[var(--primary-blue)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Thank You!</h1>
+          <h1 className="text-2xl font-bold text-[var(--primary-black)] mb-2">Thank You!</h1>
           <p className="text-gray-600 mb-6">
             Your schedule preferences have been submitted successfully. 
             Your manager will review them when creating the schedule.
@@ -201,7 +201,7 @@ export default function EmployeePreferenceForm() {
             <p className="text-sm text-gray-500 mb-3">Interested in managing schedules for your team?</p>
             <a 
               href="/" 
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[var(--primary-blue)] hover:bg-[#1E407C] transition-colors"
             >
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -217,18 +217,18 @@ export default function EmployeePreferenceForm() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-[var(--background-white)]" style={{ fontFamily: 'Poppins, Arial, Helvetica, sans-serif' }}>
       {/* Header */}
       <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 py-6">
           <div className="flex items-center">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-4">
+            <div className="w-10 h-10 bg-[var(--primary-blue)] rounded-lg flex items-center justify-center mr-4">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Schedule Preference Form</h1>
+              <h1 className="text-2xl font-bold text-[var(--primary-black)]">Schedule Preference Form</h1>
               <p className="text-gray-600">Let us know your preferred work days</p>
             </div>
           </div>
@@ -240,7 +240,7 @@ export default function EmployeePreferenceForm() {
         <div className="max-w-2xl mx-auto">
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             {/* Form Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6">
+            <div className="bg-gradient-to-r from-[var(--primary-blue)] to-[#1E407C] px-8 py-6">
               <h2 className="text-xl font-bold text-white mb-2">{session.name}</h2>
               <div className="flex items-center text-blue-100 text-sm">
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -264,11 +264,11 @@ export default function EmployeePreferenceForm() {
               {/* Personal Information */}
               <div className="space-y-6">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Information</h3>
+                  <h3 className="text-lg font-semibold text-[var(--primary-black)] mb-4">Your Information</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label htmlFor="employeeName" className="block text-sm font-medium text-gray-700 mb-2">
-                        Full Name <span className="text-red-500">*</span>
+                      <label htmlFor="employeeName" className="block text-sm font-medium text-[var(--primary-black)] mb-2">
+                        Full Name <span className="text-[var(--error-red)]">*</span>
                       </label>
                       <input
                         type="text"
@@ -276,14 +276,14 @@ export default function EmployeePreferenceForm() {
                         value={employeeName}
                         onChange={e => setEmployeeName(e.target.value)}
                         required
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary-blue)] focus:border-[var(--primary-blue)] transition-colors"
                         placeholder="Enter your full name"
                       />
                     </div>
 
                     <div>
-                      <label htmlFor="employeeEmail" className="block text-sm font-medium text-gray-700 mb-2">
-                        Email Address <span className="text-red-500">*</span>
+                      <label htmlFor="employeeEmail" className="block text-sm font-medium text-[var(--primary-black)] mb-2">
+                        Email Address <span className="text-[var(--error-red)]">*</span>
                       </label>
                       <input
                         type="email"
@@ -291,7 +291,7 @@ export default function EmployeePreferenceForm() {
                         value={employeeEmail}
                         onChange={e => setEmployeeEmail(e.target.value)}
                         required
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary-blue)] focus:border-[var(--primary-blue)] transition-colors"
                         placeholder="your.email@example.com"
                       />
                     </div>
@@ -299,16 +299,31 @@ export default function EmployeePreferenceForm() {
                 </div>
               </div>
 
+              {/* Quick Tip - Moved to top */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start">
+                  <svg className="w-5 h-5 text-[var(--primary-blue)] mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-[var(--primary-blue)] mb-1">Quick Tip</p>
+                    <p className="text-sm text-blue-700">
+                      Rank your preferred days in order. You don't need to fill all options - your first choice matters most!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* Preferences Section */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Schedule Preferences</h3>
+                <h3 className="text-lg font-semibold text-[var(--primary-black)] mb-2">Schedule Preferences</h3>
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                   <div className="flex items-start">
-                    <svg className="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-[var(--primary-blue)] mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div>
-                      <p className="text-sm font-medium text-blue-800 mb-1">Available Days</p>
+                      <p className="text-sm font-medium text-[var(--primary-blue)] mb-1">Available Days</p>
                       <p className="text-sm text-blue-700">
                         Select your preferred work days from: <span className="font-medium">{session.schedulable_days.join(', ')}</span>
                       </p>
@@ -323,19 +338,19 @@ export default function EmployeePreferenceForm() {
                       <div key={index} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
                         <div className="flex-shrink-0">
                           <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium text-white ${
-                            index === 0 ? 'bg-blue-700' :
-                            index === 1 ? 'bg-blue-600' :
-                            index === 2 ? 'bg-blue-500' :
-                            index === 3 ? 'bg-blue-400' :
-                            index === 4 ? 'bg-blue-300 text-blue-900' :
-                            index === 5 ? 'bg-blue-200 text-blue-900' :
-                            'bg-blue-100 text-blue-900'
+                            index === 0 ? 'bg-[var(--primary-blue)]' :
+                            index === 1 ? 'bg-[#1E407C]' :
+                            index === 2 ? 'bg-[#2E508C]' :
+                            index === 3 ? 'bg-[#3E609C]' :
+                            index === 4 ? 'bg-[#4E70AC] text-white' :
+                            index === 5 ? 'bg-[#5E80BC] text-white' :
+                            'bg-[#6E90CC] text-white'
                           }`}>
                             {index + 1}
                           </span>
                         </div>
                         <div className="flex-1">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <label className="block text-sm font-medium text-[var(--primary-black)] mb-2">
                             {index === 0 ? 'Most Preferred Day' :
                              index === 1 ? '2nd Choice' :
                              index === 2 ? '3rd Choice' :
@@ -347,7 +362,7 @@ export default function EmployeePreferenceForm() {
                           <select
                             value={preference}
                             onChange={(e) => updatePreference(index, e.target.value as DayOfWeek)}
-                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[var(--primary-blue)] focus:border-[var(--primary-blue)]"
                           >
                             <option value="">Select a day</option>
                             {/* Show current selection even if it would normally be filtered out */}
@@ -364,32 +379,18 @@ export default function EmployeePreferenceForm() {
                     );
                   })}
                 </div>
-                
-                <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="flex items-start">
-                    <svg className="w-5 h-5 text-yellow-600 mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                    <div>
-                      <p className="text-sm font-medium text-yellow-800 mb-1">Quick Tip</p>
-                      <p className="text-sm text-yellow-700">
-                        You don't need to fill all preferences. Select as many as you'd like in order of preference - your first choice is most important!
-                      </p>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {formError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                   <div className="flex items-center">
-                    <svg className="w-5 h-5 text-red-600 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-[var(--error-red)] mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <p className="text-sm text-red-600 font-medium flex-1">{formError}</p>
+                    <p className="text-sm text-[var(--error-red)] font-medium flex-1">{formError}</p>
                     <button
                       onClick={() => setFormError(null)}
-                      className="ml-4 inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors flex-shrink-0"
+                      className="ml-4 inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-[var(--error-red)] bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--error-red)] transition-colors flex-shrink-0"
                       type="button"
                     >
                       Try Again
@@ -402,7 +403,7 @@ export default function EmployeePreferenceForm() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 px-6 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 disabled:hover:scale-100"
+                  className="w-full bg-gradient-to-r from-[var(--primary-blue)] to-[#1E407C] text-white py-4 px-6 rounded-lg font-semibold hover:from-[#1E407C] hover:to-[#2E508C] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 disabled:hover:scale-100"
                 >
                   {submitting ? (
                     <div className="flex items-center justify-center">
@@ -433,7 +434,7 @@ export default function EmployeePreferenceForm() {
               </p>
               <a 
                 href="/" 
-                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-[var(--primary-black)] bg-white hover:bg-gray-50 transition-colors"
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
