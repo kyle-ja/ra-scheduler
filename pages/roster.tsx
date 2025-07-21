@@ -1406,9 +1406,9 @@ export default function RosterPage() {
 
       // 1) Build the `employees` array (employeeData) - cost logic remains important for preferences on allowed days
       setGenerationProgress(10);
-      // Define costs with heavy bias toward top 2 preferences, 3rd as fallback, 4th+ heavily penalized
-      const rankWeights = [0, 20, 70, 150, 300, 450, 600];
-      const NO_PREFERENCE_COST = 800; // Much higher than any ranked preference
+      // Define costs with heavy bias toward top 2 preferences, 3rd as fallback, 4th+ essentially impossible
+      const rankWeights = [0, 20, 100, 950, 950, 950, 950]; // 4th-7th preferences become essentially unavailable
+      const NO_PREFERENCE_COST = 950; // Same as 4th+ preferences - essentially unavailable
       
       const employeeData = employees.map((emp: Employee) => {
         const cost = Array(7).fill(1000);
