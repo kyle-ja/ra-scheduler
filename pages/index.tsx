@@ -100,6 +100,11 @@ export default function Home() {
                     allowFullScreen
                   ></iframe>
                 </div>
+                <div className="mt-4 text-center">
+                  <p className="text-sm text-gray-500 italic">
+                    Features Recently Added: Calendar color coding and filtering feature. Tab automatically created in excel export for 'MS Shifts' upload template. Submitted preferences can now be modified in case employee requests a change.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
