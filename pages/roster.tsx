@@ -1756,7 +1756,7 @@ export default function RosterPage() {
         msShiftsData.push({
           'Member': memberName,
           'Work Email': workEmail,
-          'Group': '', // Empty as specified
+          'Group': currentRosterName,
           'Start Date': startDate,
           'Start Time': '8:00 PM',
           'End Date': endDate,
@@ -1765,7 +1765,7 @@ export default function RosterPage() {
           'Custom Label': '',
           'Unpaid Break (minutes)': '',
           'Notes': '',
-          'Shared': ''
+          'Shared': '2. Not Shared'
         });
       }
     });
@@ -1779,7 +1779,7 @@ export default function RosterPage() {
     XLSX.utils.book_append_sheet(wb, scheduleWS, "Schedule");
     XLSX.utils.book_append_sheet(wb, rosterWS, "Roster Preferences");
     XLSX.utils.book_append_sheet(wb, summaryWS, "Summary");
-    XLSX.utils.book_append_sheet(wb, msShiftsWS, "MS Shifts Upload");
+    XLSX.utils.book_append_sheet(wb, msShiftsWS, "Shifts");
 
     // 5. Individual Employee Sheets
     if (employees && schedule && schedule.length > 0) {
